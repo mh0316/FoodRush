@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v3.21.12
-// source: users.proto
+// source: pb/service.proto
 
 package pb
 
@@ -34,7 +34,7 @@ type User struct {
 
 func (x *User) Reset() {
 	*x = User{}
-	mi := &file_users_proto_msgTypes[0]
+	mi := &file_pb_service_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46,7 +46,7 @@ func (x *User) String() string {
 func (*User) ProtoMessage() {}
 
 func (x *User) ProtoReflect() protoreflect.Message {
-	mi := &file_users_proto_msgTypes[0]
+	mi := &file_pb_service_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,7 +59,7 @@ func (x *User) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use User.ProtoReflect.Descriptor instead.
 func (*User) Descriptor() ([]byte, []int) {
-	return file_users_proto_rawDescGZIP(), []int{0}
+	return file_pb_service_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *User) GetId() string {
@@ -109,7 +109,7 @@ type CreateUserRequest struct {
 
 func (x *CreateUserRequest) Reset() {
 	*x = CreateUserRequest{}
-	mi := &file_users_proto_msgTypes[1]
+	mi := &file_pb_service_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -121,7 +121,7 @@ func (x *CreateUserRequest) String() string {
 func (*CreateUserRequest) ProtoMessage() {}
 
 func (x *CreateUserRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_users_proto_msgTypes[1]
+	mi := &file_pb_service_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -134,7 +134,7 @@ func (x *CreateUserRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateUserRequest.ProtoReflect.Descriptor instead.
 func (*CreateUserRequest) Descriptor() ([]byte, []int) {
-	return file_users_proto_rawDescGZIP(), []int{1}
+	return file_pb_service_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *CreateUserRequest) GetNombre() string {
@@ -174,7 +174,7 @@ type CreateUserResponse struct {
 
 func (x *CreateUserResponse) Reset() {
 	*x = CreateUserResponse{}
-	mi := &file_users_proto_msgTypes[2]
+	mi := &file_pb_service_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -186,7 +186,7 @@ func (x *CreateUserResponse) String() string {
 func (*CreateUserResponse) ProtoMessage() {}
 
 func (x *CreateUserResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_users_proto_msgTypes[2]
+	mi := &file_pb_service_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -199,7 +199,7 @@ func (x *CreateUserResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateUserResponse.ProtoReflect.Descriptor instead.
 func (*CreateUserResponse) Descriptor() ([]byte, []int) {
-	return file_users_proto_rawDescGZIP(), []int{2}
+	return file_pb_service_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *CreateUserResponse) GetUser() *User {
@@ -218,7 +218,7 @@ type GetUserProfileRequest struct {
 
 func (x *GetUserProfileRequest) Reset() {
 	*x = GetUserProfileRequest{}
-	mi := &file_users_proto_msgTypes[3]
+	mi := &file_pb_service_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -230,7 +230,7 @@ func (x *GetUserProfileRequest) String() string {
 func (*GetUserProfileRequest) ProtoMessage() {}
 
 func (x *GetUserProfileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_users_proto_msgTypes[3]
+	mi := &file_pb_service_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -243,7 +243,7 @@ func (x *GetUserProfileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUserProfileRequest.ProtoReflect.Descriptor instead.
 func (*GetUserProfileRequest) Descriptor() ([]byte, []int) {
-	return file_users_proto_rawDescGZIP(), []int{3}
+	return file_pb_service_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GetUserProfileRequest) GetId() string {
@@ -262,7 +262,7 @@ type GetUserProfileResponse struct {
 
 func (x *GetUserProfileResponse) Reset() {
 	*x = GetUserProfileResponse{}
-	mi := &file_users_proto_msgTypes[4]
+	mi := &file_pb_service_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -274,7 +274,7 @@ func (x *GetUserProfileResponse) String() string {
 func (*GetUserProfileResponse) ProtoMessage() {}
 
 func (x *GetUserProfileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_users_proto_msgTypes[4]
+	mi := &file_pb_service_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -287,7 +287,7 @@ func (x *GetUserProfileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetUserProfileResponse.ProtoReflect.Descriptor instead.
 func (*GetUserProfileResponse) Descriptor() ([]byte, []int) {
-	return file_users_proto_rawDescGZIP(), []int{4}
+	return file_pb_service_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetUserProfileResponse) GetUser() *User {
@@ -297,11 +297,11 @@ func (x *GetUserProfileResponse) GetUser() *User {
 	return nil
 }
 
-var File_users_proto protoreflect.FileDescriptor
+var File_pb_service_proto protoreflect.FileDescriptor
 
-const file_users_proto_rawDesc = "" +
+const file_pb_service_proto_rawDesc = "" +
 	"\n" +
-	"\vusers.proto\x12\x05users\"\x83\x01\n" +
+	"\x10pb/service.proto\x12\x05users\"\x83\x01\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06nombre\x18\x02 \x01(\tR\x06nombre\x12\x16\n" +
@@ -322,29 +322,29 @@ const file_users_proto_rawDesc = "" +
 	"\fUsersService\x12A\n" +
 	"\n" +
 	"CreateUser\x12\x18.users.CreateUserRequest\x1a\x19.users.CreateUserResponse\x12M\n" +
-	"\x0eGetUserProfile\x12\x1c.users.GetUserProfileRequest\x1a\x1d.users.GetUserProfileResponseB\x1cZ\x1agithub.com/user-service/pbb\x06proto3"
+	"\x0eGetUserProfile\x12\x1c.users.GetUserProfileRequest\x1a\x1d.users.GetUserProfileResponseB'Z%github.com/jesus-acev/user-service/pbb\x06proto3"
 
 var (
-	file_users_proto_rawDescOnce sync.Once
-	file_users_proto_rawDescData []byte
+	file_pb_service_proto_rawDescOnce sync.Once
+	file_pb_service_proto_rawDescData []byte
 )
 
-func file_users_proto_rawDescGZIP() []byte {
-	file_users_proto_rawDescOnce.Do(func() {
-		file_users_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_users_proto_rawDesc), len(file_users_proto_rawDesc)))
+func file_pb_service_proto_rawDescGZIP() []byte {
+	file_pb_service_proto_rawDescOnce.Do(func() {
+		file_pb_service_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_pb_service_proto_rawDesc), len(file_pb_service_proto_rawDesc)))
 	})
-	return file_users_proto_rawDescData
+	return file_pb_service_proto_rawDescData
 }
 
-var file_users_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
-var file_users_proto_goTypes = []any{
+var file_pb_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_pb_service_proto_goTypes = []any{
 	(*User)(nil),                   // 0: users.User
 	(*CreateUserRequest)(nil),      // 1: users.CreateUserRequest
 	(*CreateUserResponse)(nil),     // 2: users.CreateUserResponse
 	(*GetUserProfileRequest)(nil),  // 3: users.GetUserProfileRequest
 	(*GetUserProfileResponse)(nil), // 4: users.GetUserProfileResponse
 }
-var file_users_proto_depIdxs = []int32{
+var file_pb_service_proto_depIdxs = []int32{
 	0, // 0: users.CreateUserResponse.user:type_name -> users.User
 	0, // 1: users.GetUserProfileResponse.user:type_name -> users.User
 	1, // 2: users.UsersService.CreateUser:input_type -> users.CreateUserRequest
@@ -358,26 +358,26 @@ var file_users_proto_depIdxs = []int32{
 	0, // [0:2] is the sub-list for field type_name
 }
 
-func init() { file_users_proto_init() }
-func file_users_proto_init() {
-	if File_users_proto != nil {
+func init() { file_pb_service_proto_init() }
+func file_pb_service_proto_init() {
+	if File_pb_service_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_users_proto_rawDesc), len(file_users_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pb_service_proto_rawDesc), len(file_pb_service_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_users_proto_goTypes,
-		DependencyIndexes: file_users_proto_depIdxs,
-		MessageInfos:      file_users_proto_msgTypes,
+		GoTypes:           file_pb_service_proto_goTypes,
+		DependencyIndexes: file_pb_service_proto_depIdxs,
+		MessageInfos:      file_pb_service_proto_msgTypes,
 	}.Build()
-	File_users_proto = out.File
-	file_users_proto_goTypes = nil
-	file_users_proto_depIdxs = nil
+	File_pb_service_proto = out.File
+	file_pb_service_proto_goTypes = nil
+	file_pb_service_proto_depIdxs = nil
 }
