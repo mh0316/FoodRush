@@ -1,0 +1,42 @@
+services:
+  postgresql-user:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${USER_SERVICE_DB_USER}
+      POSTGRES_PASSWORD: ${USER_SERVICE_DB_PASSWORD}
+      POSTGRES_DB: ${USER_SERVICE_DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgresql-user-data:/var/lib/postgresql/data
+      - ./user-service/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${USER_SERVICE_DB_USER} -d ${USER_SERVICE_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    image: foodrush-user-service:local
+    restart: unless-stopped
+    environment:
+      DB_HOST: ${USER_SERVICE_DB_HOST}
+      DB_PORT: ${USER_SERVICE_DB_PORT}
+      DB_USER: ${USER_SERVICE_DB_USER}
+      DB_PASSWORD: ${USER_SERVICE_DB_PASSWORD}
+      DB_NAME: ${USER_SERVICE_DB_NAME}
+      DB_SSLMODE: ${USER_SERVICE_DB_SSLMODE}
+      GRPC_PORT: ${USER_SERVICE_GRPC_PORT}
+    depends_on:
+      postgresql-user:
+        condition: service_healthy
+    ports:
+      - "${USER_SERVICE_GRPC_PORT}:${USER_SERVICE_GRPC_PORT}"
+
+volumes:
+  postgresql-user-data:
