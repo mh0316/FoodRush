@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package orders;
+
+option go_package = "foodrush/orders/proto";
+
+message OrderItem {
+  string producto_id = 1;
+  int32 cantidad = 2;
+}
+
+message Order {
+  string id = 1;
+  string user_id = 2;
+  string comercio_id = 3;
+  repeated OrderItem items = 4;
+  double total = 5;
+  string status = 6;
+  string qr_retiro = 7;
+  string comprobante_url = 8;
+}
+
+
+message CreateOrderRequest {
+  string user_id = 1;
+  string comercio_id = 2;
+  repeated OrderItem items = 3;
+}
+
+message CreateOrderResponse {
+  string id = 1;
+  double total = 2;
+  string status = 3; // Ejemplo: "CREATED"
+}
+
+message GetOrderDetailsRequest {
+  string id = 1;
+}
+
+message ConfirmOrderPickupRequest {
+  string qr_retiro = 1;
+}
+
+message ConfirmOrderPickupResponse {
+  string id = 1;
+  string nuevo_status = 2; // Ejemplo: "DELIVERED"
+}
+
+
+service OrderService {
+  rpc CreateOrder (CreateOrderRequest) returns (CreateOrderResponse);
+  
+  rpc GetOrderDetails (GetOrderDetailsRequest) returns (Order);
+
+  rpc ConfirmOrderPickup (ConfirmOrderPickupRequest) returns (ConfirmOrderPickupResponse);
+}
