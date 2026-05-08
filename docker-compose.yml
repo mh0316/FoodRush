@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   orders-service:
-    build: .
+    build: ./order-service
     ports:
       - "50051:50051"
     environment:
