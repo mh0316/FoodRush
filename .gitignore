@@ -1,0 +1,10 @@
+# Variables de entorno (¡Seguridad!)
+.env
+
+# Binarios y ejecutables
+main
+main.exe
+*.exe
+
+# Carpetas de dependencias
+vendor/

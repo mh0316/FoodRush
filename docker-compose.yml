@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: foodrush_db_container
+    restart: always
+    environment:
+      # Usamos las variables del archivo .env
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Cargamos el script SQL para que las tablas se creen solas al iniciar
+      - ./init-db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  catalog-service:
+    build: .
+    container_name: foodrush_catalog
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "50051:50051"
+    environment:
+      # Usamos la URL que definiste en tu .env
+      DB_URL: ${DB_URL}
+
+volumes:
+  postgres_data:
