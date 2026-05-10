@@ -54,4 +54,3 @@ service PaymentsService {
   rpc ProcessPayment (ProcessPaymentRequest) returns (ProcessPaymentResponse);
   rpc GetPaymentByOrder (GetPaymentByOrderRequest) returns (GetPaymentByOrderResponse);
 }
-

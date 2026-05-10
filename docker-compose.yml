@@ -16,7 +16,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   payments-service:
-    build: .
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
 
     container_name: payments-service
 
