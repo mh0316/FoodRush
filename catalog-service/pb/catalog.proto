@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package catalog;
+
+option go_package = "github.com/mh0316/catalog/pb";
+
+// Definición del Servicio de Catálogo para FoodRush
+service CatalogService {
+  // Lista locales según su estado [cite: 94]
+  rpc ListComercios (ListComerciosRequest) returns (ListComerciosResponse);
+
+  // Obtiene el menú de un local [cite: 97]
+  rpc GetMenuByComercio (GetMenuByComercioRequest) returns (GetMenuByComercioResponse);
+
+  // Detalle técnico para el flujo de compra [cite: 101]
+  rpc GetProductDetails (GetProductDetailsRequest) returns (Product);
+}
+
+message ListComerciosRequest {
+  bool solo_activos = 1; 
+}
+
+message ListComerciosResponse {
+  repeated Comercio comercios = 1;
+}
+
+message Comercio {
+  string id = 1;
+  string nombre = 2;
+  string direccion = 3;
+  bool activo = 4;
+}
+
+message GetMenuByComercioRequest {
+  string comercio_id = 1;
+}
+
+message GetMenuByComercioResponse {
+  repeated Product productos = 1;
+}
+
+message Product {
+  string id = 1;
+  string nombre = 2;
+  double precio = 3;
+  string comercio_id = 4;
+  bool disponible = 5;
+}
+
+message GetProductDetailsRequest {
+  string id = 1;
+}

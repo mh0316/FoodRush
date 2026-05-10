@@ -5,16 +5,16 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${USER_SERVICE_DB_USER}
-      POSTGRES_PASSWORD: ${USER_SERVICE_DB_PASSWORD}
-      POSTGRES_DB: ${USER_SERVICE_DB_NAME}
+      POSTGRES_USER: user_admin
+      POSTGRES_PASSWORD: user_password
+      POSTGRES_DB: user_db
     ports:
       - "5432:5432"
     volumes:
       - postgresql-user-data:/var/lib/postgresql/data
       - ./user-service/db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${USER_SERVICE_DB_USER} -d ${USER_SERVICE_DB_NAME}" ]
+      test: [ "CMD-SHELL", "pg_isready -U user_admin -d user_db" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,30 +27,61 @@ services:
     image: foodrush-user-service:local
     restart: unless-stopped
     environment:
-      DB_HOST: ${USER_SERVICE_DB_HOST}
-      DB_PORT: ${USER_SERVICE_DB_PORT}
-      DB_USER: ${USER_SERVICE_DB_USER}
-      DB_PASSWORD: ${USER_SERVICE_DB_PASSWORD}
-      DB_NAME: ${USER_SERVICE_DB_NAME}
-      DB_SSLMODE: ${USER_SERVICE_DB_SSLMODE}
-      GRPC_PORT: ${USER_SERVICE_GRPC_PORT}
+      DB_HOST: postgresql-user
+      DB_PORT: 5432
+      DB_USER: user_admin
+      DB_PASSWORD: user_password
+      DB_NAME: user_db
+      DB_SSLMODE: disable
+      GRPC_PORT: 50051
     depends_on:
       postgresql-user:
         condition: service_healthy
     ports:
-      - "${USER_SERVICE_GRPC_PORT}:${USER_SERVICE_GRPC_PORT}"
+      - "50051:50051"
+
+  catalog-service:
+    build: ./catalog-service
+    container_name: foodrush_catalog
+    restart: on-failure
+    depends_on:
+      postgresql-catalog:
+        condition: service_healthy
+    ports:
+      - "50052:50052"
+    environment:
+      DB_URL: user=postgres password=admin123 host=postgresql-catalog port=5432 dbname=foodrush_db sslmode=disable
+
+  postgresql-catalog:
+    image: postgres:16-alpine
+    container_name: foodrush_db_container
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: foodrush_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./catalog-service/init-db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d foodrush_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   orders-service:
     build: ./order-service
     ports:
-      - "50052:50052"
+      - "50053:50053"
     environment:
-      - MONGO_URI=mongodb://mongodb:27017
-      - PORT=50052
+      - MONGO_URI=mongodb://mongodb-orders:27017
+      - PORT=50053
     depends_on:
-      - mongodb
+      - mongodb-orders
 
-  mongodb:
+  mongodb-orders:
     image: mongo:latest
     ports:
       - "27017:27017"
@@ -59,4 +90,5 @@ services:
 
 volumes:
   postgresql-user-data:
+  postgres_data:
   mongodb_data:
