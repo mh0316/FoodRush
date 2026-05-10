@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package payments;
+
+option go_package = "github.com/gonzalo-fch/PaymentsService/pb";
+
+
+
+enum PaymentStatus {
+  PENDING  = 0;
+  APPROVED = 1;
+  DECLINED = 2;
+}
+
+
+
+message Payment {
+  string id        = 1;
+  string order_id  = 2;
+  string user_id   = 3;
+  int64  amount    = 4;
+  PaymentStatus status = 5;
+}
+
+
+
+message ProcessPaymentRequest {
+  string order_id          = 1;
+  string user_id           = 2;
+  int64  amount            = 3;
+  string metodo_pago_token = 4;
+}
+
+message ProcessPaymentResponse {
+  string id = 1;
+  PaymentStatus status = 2;
+}
+
+
+
+message GetPaymentByOrderRequest {
+  string order_id = 1;
+}
+
+message GetPaymentByOrderResponse {
+  string id     = 1;
+  int64  amount = 2;
+  PaymentStatus status = 3;
+}
+
+
+
+service PaymentsService {
+  rpc ProcessPayment (ProcessPaymentRequest) returns (ProcessPaymentResponse);
+  rpc GetPaymentByOrder (GetPaymentByOrderRequest) returns (GetPaymentByOrderResponse);
+}
+
