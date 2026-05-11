@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"os"
 
 	"github.com/joho/godotenv"
 	pb "github.com/gonzalo-fch/PaymentsService/pb"
@@ -28,12 +29,14 @@ func (s *server) ProcessPayment(
 }
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error cargando .env")
+	_ = godotenv.Load()
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "50051"
 	}
 
-	lis, err := net.Listen("tcp", ":50051")
+	lis, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		log.Fatalf("no se pudo escuchar: %v", err)
 	}
@@ -41,7 +44,7 @@ func main() {
 	srv := grpc.NewServer()
 	pb.RegisterPaymentsServiceServer(srv, &server{})
 
-	log.Println("servidor gRPC escuchando en :50051")
+	log.Printf("servidor gRPC escuchando en :%s", port)
 
 	if err := srv.Serve(lis); err != nil {
 		log.Fatalf("error al servir: %v", err)
