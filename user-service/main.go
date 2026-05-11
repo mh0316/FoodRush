@@ -3,13 +3,15 @@ package main
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"math/rand"
+	"time"
 
 	pb "github.com/jesus-acev/user-service/pb"
+	"github.com/jesus-acev/user-service/internal/repository"
 	_ "github.com/lib/pq"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -18,69 +20,32 @@ import (
 
 type server struct {
 	pb.UnimplementedUsersServiceServer
-	db *sql.DB
+	repo *repository.UserRepository
 }
 
-func (s *server) CreateUser(
-	ctx context.Context,
-	req *pb.CreateUserRequest,
-) (*pb.CreateUserResponse, error) {
+func (s *server) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.CreateUserResponse, error) {
 	if req.Nombre == "" || req.Correo == "" || req.Password == "" || req.PaymentToken == "" {
 		return nil, status.Error(codes.InvalidArgument, "nombre, correo, password y payment_token son obligatorios")
 	}
 
-	const query = `
-		INSERT INTO users (nombre, correo, payment_token, password)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id;
-	`
-
-	var id string
-	err := s.db.QueryRowContext(
-		ctx,
-		query,
-		req.Nombre,
-		req.Correo,
-		req.PaymentToken,
-		req.Password,
-	).Scan(&id)
+	id, err := s.repo.Create(req)
 	if err != nil {
+		if repository.IsAlreadyExists(err) {
+			return nil, status.Error(codes.AlreadyExists, "correo ya registrado")
+		}
 		return nil, status.Errorf(codes.Internal, "no se pudo crear usuario: %v", err)
 	}
 
-	return &pb.CreateUserResponse{
-		User: &pb.User{
-			Id:           id,
-			Nombre:       req.Nombre,
-			Correo:       req.Correo,
-			PaymentToken: req.PaymentToken,
-			Status:       "created",
-		},
-	}, nil
+	return &pb.CreateUserResponse{User: &pb.User{Id: id, Nombre: req.Nombre, Correo: req.Correo, PaymentToken: req.PaymentToken, Status: "created"}}, nil
 }
 
-func (s *server) GetUserProfile(
-	ctx context.Context,
-	req *pb.GetUserProfileRequest,
-) (*pb.GetUserProfileResponse, error) {
+func (s *server) GetUserProfile(ctx context.Context, req *pb.GetUserProfileRequest) (*pb.GetUserProfileResponse, error) {
 	if req.Id == "" {
 		return nil, status.Error(codes.InvalidArgument, "id es obligatorio")
 	}
 
-	const query = `
-		SELECT id, nombre, correo, payment_token
-		FROM users
-		WHERE id = $1;
-	`
-
-	user := &pb.User{}
-	err := s.db.QueryRowContext(ctx, query, req.Id).Scan(
-		&user.Id,
-		&user.Nombre,
-		&user.Correo,
-		&user.PaymentToken,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
+	user, err := s.repo.GetByID(req.Id)
+	if repository.IsNotFound(err) {
 		return nil, status.Error(codes.NotFound, "usuario no encontrado")
 	}
 	if err != nil {
@@ -88,10 +53,7 @@ func (s *server) GetUserProfile(
 	}
 
 	user.Status = "active"
-
-	return &pb.GetUserProfileResponse{
-		User: user,
-	}, nil
+	return &pb.GetUserProfileResponse{User: user}, nil
 }
 
 func buildDSN() string {
@@ -102,36 +64,42 @@ func buildDSN() string {
 	name := getEnv("DB_NAME", "user_service_db")
 	sslmode := getEnv("DB_SSLMODE", "disable")
 
-	return fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		host,
-		port,
-		user,
-		password,
-		name,
-		sslmode,
-	)
+	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s", host, port, user, password, name, sslmode)
 }
 
 func getEnv(key, defaultValue string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		return defaultValue
+	if value := os.Getenv(key); value != "" {
+		return value
 	}
-	return value
+	return defaultValue
+}
+
+func openDBWithRetry() (*sql.DB, error) {
+	var db *sql.DB
+	var err error
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 1; i <= 5; i++ {
+		db, err = sql.Open("postgres", buildDSN())
+		if err == nil {
+			err = db.Ping()
+		}
+		if err == nil {
+			return db, nil
+		}
+		log.Printf("⏳ [%d/5] Esperando a que la DB esté lista...", i)
+		time.Sleep(2*time.Second + time.Duration(rand.Intn(300))*time.Millisecond)
+	}
+	return nil, err
 }
 
 func main() {
-	db, err := sql.Open("postgres", buildDSN())
+	db, err := openDBWithRetry()
 	if err != nil {
-		log.Fatalf("no se pudo crear conexion DB: %v", err)
+		log.Fatalf("no se pudo conectar a PostgreSQL: %v", err)
 	}
 	defer db.Close()
 
-	if err := db.Ping(); err != nil {
-		log.Fatalf("no se pudo conectar a PostgreSQL: %v", err)
-	}
-
+	repo := repository.NewUserRepository(db)
 	grpcPort := getEnv("GRPC_PORT", "50051")
 	lis, err := net.Listen("tcp", ":"+grpcPort)
 	if err != nil {
@@ -139,7 +107,7 @@ func main() {
 	}
 
 	srv := grpc.NewServer()
-	pb.RegisterUsersServiceServer(srv, &server{db: db})
+	pb.RegisterUsersServiceServer(srv, &server{repo: repo})
 
 	log.Printf("servidor gRPC escuchando en :%s", grpcPort)
 	if err := srv.Serve(lis); err != nil {

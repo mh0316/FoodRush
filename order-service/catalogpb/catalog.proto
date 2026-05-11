@@ -2,18 +2,16 @@ syntax = "proto3";
 
 package catalog;
 
-option go_package = "github.com/mh0316/catalog/pb";
+option go_package = "foodrush/orders/catalogpb;catalogpb";
 
 service CatalogService {
   rpc ListComercios (ListComerciosRequest) returns (ListComerciosResponse);
-
   rpc GetMenuByComercio (GetMenuByComercioRequest) returns (GetMenuByComercioResponse);
-
   rpc GetProductDetails (GetProductDetailsRequest) returns (Product);
 }
 
 message ListComerciosRequest {
-  bool solo_activos = 1; 
+  bool solo_activos = 1;
 }
 
 message ListComerciosResponse {

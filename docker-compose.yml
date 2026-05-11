@@ -65,10 +65,13 @@ services:
       - orders-database-data:/data/db
 
   orders-service:
-    build: ./order-service
+    build:
+      context: .
+      dockerfile: order-service/Dockerfile
     environment:
       - MONGO_URI=mongodb://orders-database:${ORDERS_DB_PORT}
       - PORT=${ORDERS_SERVICE_GRPC_PORT}
+      - CATALOG_SERVICE_ADDR=${CATALOG_SERVICE_ADDR}
     depends_on:
       - orders-database
 
@@ -80,11 +83,18 @@ services:
       POSTGRES_DB: ${PAYMENT_DB_NAME}
     volumes:
       - payment-database-data:/var/lib/postgresql/data
+      - ./payment-service/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PAYMENT_DB_USER} -d ${PAYMENT_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   payments-service:
     build:
       context: ./payment-service
       dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
       DB_HOST: ${PAYMENT_DB_HOST}
       DB_PORT: ${PAYMENT_DB_PORT}
@@ -93,7 +103,8 @@ services:
       DB_NAME: ${PAYMENT_DB_NAME}
       PORT: ${PAYMENTS_SERVICE_GRPC_PORT}
     depends_on:
-      - payment-database
+      payment-database:
+        condition: service_healthy
 
   api-gateway:
     build:

@@ -27,6 +27,8 @@ Usa `.env.example` como referencia para completar `.env`.
 
 ## Probar API Gateway
 
+Las rutas públicas no cambiaron; solo se mejoró la implementación interna de los servicios.
+
 ### Salud
 
 ```bash
@@ -93,6 +95,72 @@ curl -X POST http://localhost:8080/payments/process \
 
 ```bash
 curl http://localhost:8080/payments/order/ORDER_ID
+```
+
+## Secuencia de ejemplo
+
+Usa esta secuencia si quieres probar el sistema de punta a punta con valores de ejemplo:
+
+1. Crear usuario:
+
+```bash
+curl -X POST http://localhost:8080/users \
+  -H 'Content-Type: application/json' \
+  -d '{"nombre":"Ana Perez","correo":"ana.perez@mail.com","password":"123456","payment_token":"tok_ana_123"}'
+```
+
+2. Consultar catálogo:
+
+```bash
+curl http://localhost:8080/catalog/comercios
+```
+
+3. Consultar menú de un comercio:
+
+```bash
+curl http://localhost:8080/catalog/comercios/COMERCIO_ID/menu
+```
+
+4. Consultar detalle de producto:
+
+```bash
+curl http://localhost:8080/catalog/products/PRODUCT_ID
+```
+
+5. Crear pedido:
+
+```bash
+curl -X POST http://localhost:8080/orders \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id":"USER_ID_REAL","comercio_id":"COMERCIO_ID","items":[{"producto_id":"PRODUCT_ID","cantidad":2}]}'
+```
+
+6. Obtener detalle del pedido:
+
+```bash
+curl http://localhost:8080/orders/ORDER_ID_REAL
+```
+
+7. Confirmar retiro del pedido:
+
+```bash
+curl -X POST http://localhost:8080/orders/pickup/confirm \
+  -H 'Content-Type: application/json' \
+  -d '{"qr_retiro":"QR_REAL"}'
+```
+
+8. Procesar pago:
+
+```bash
+curl -X POST http://localhost:8080/payments/process \
+  -H 'Content-Type: application/json' \
+  -d '{"order_id":"ORDER_ID_REAL","user_id":"USER_ID_REAL","amount":1000,"metodo_pago_token":"tok_ana_123"}'
+```
+
+9. Consultar pago por pedido:
+
+```bash
+curl http://localhost:8080/payments/order/ORDER_ID_REAL
 ```
 
 ## Documento Técnico

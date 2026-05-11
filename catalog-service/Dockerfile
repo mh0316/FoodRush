@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 RUN apk add --no-cache git
 WORKDIR /app
@@ -8,10 +8,6 @@ COPY go.mod go.sum ./
 
 # Copiamos el código
 COPY . .
-
-# Forzamos una versión moderna de gRPC que funcione con Go 1.23
-RUN go get google.golang.org/grpc@v1.64.0
-RUN go mod tidy
 
 # Compilamos
 RUN go build -o main .

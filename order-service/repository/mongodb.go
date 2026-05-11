@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -9,6 +10,8 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	pb "foodrush/orders/proto"
 )
+
+var ErrNotFound = errors.New("not found")
 
 type MongoDB struct {
 	client     *mongo.Client
@@ -42,6 +45,9 @@ func (db *MongoDB) GetOrder(ctx context.Context, id string) (*pb.Order, error) {
 	var order pb.Order
 	err := db.collection.FindOne(ctx, bson.M{"id": id}).Decode(&order)
 	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	return &order, nil
@@ -54,6 +60,9 @@ func (db *MongoDB) UpdateOrderStatus(ctx context.Context, qrRetiro string, statu
 	var updatedOrder pb.Order
 	err := db.collection.FindOneAndUpdate(ctx, filter, update, options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&updatedOrder)
 	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	return &updatedOrder, nil

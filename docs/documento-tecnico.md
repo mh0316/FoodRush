@@ -101,11 +101,12 @@ Flujo técnico:
 
 ### 3. Crear Pedido
 
-El cliente envía `POST /orders` con `user_id`, `comercio_id` e `items`. El gateway delega en `orders-service` la operación `CreateOrder`. Este servicio calcula el importe total, normaliza el pedido y lo persiste en MongoDB. El resultado esperado es un pedido creado con identificador propio, monto total y estado inicial de negocio.
+El cliente envía `POST /orders` con `user_id`, `comercio_id` e `items`. El gateway delega en `orders-service` la operación `CreateOrder`. Antes de persistir, el servicio consulta a `catalog-service` por cada `producto_id` para obtener el precio vigente y calcular el importe total con datos reales del catálogo. Luego normaliza el pedido y lo persiste en MongoDB. El resultado esperado es un pedido creado con identificador propio, monto total y estado inicial de negocio.
 
 Flujo técnico:
 - Cliente -> API Gateway
 - API Gateway -> Orders Service por gRPC
+- Orders Service -> Catalog Service por gRPC para resolver precios
 - Orders Service -> MongoDB del dominio de pedidos
 - Respuesta JSON al cliente
 
@@ -136,6 +137,10 @@ Se adoptó gRPC con Protobuf para la comunicación interna debido a su tipado fu
 ### Servicios Separados Por Dominio
 
 La separación en usuarios, catálogo, pedidos y pagos responde a límites de negocio observables y no a una división accidental del código. Esta decisión incrementa la cohesión interna de cada servicio y reduce el riesgo de mezclar responsabilidades. El costo es una mayor coordinación entre componentes y un mayor esfuerzo inicial de integración.
+
+En el caso de pedidos, existe una dependencia de lectura controlada hacia catálogo para resolver precios actuales. Esta decisión mejora la coherencia del total calculado, pero introduce una dependencia temporal entre ambos servicios durante la creación de una orden.
+
+Cuando catálogo no responde, `orders-service` reintenta la lectura unas pocas veces y devuelve un error controlado al caller en lugar de colgarse.
 
 ### Persistencia Heterogenea
 

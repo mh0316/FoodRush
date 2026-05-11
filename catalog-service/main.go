@@ -3,46 +3,33 @@ package main
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"log"
 	"net"
-	"os"
+	"math/rand"
 	"time"
 
-	_ "github.com/lib/pq" // Driver de Postgres
+	"github.com/mh0316/catalog/internal/db"
+	"github.com/mh0316/catalog/internal/repository"
 	pb "github.com/mh0316/catalog/pb"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
 )
 
 // Estructura del servidor con la conexión a la BD
 type server struct {
 	pb.UnimplementedCatalogServiceServer
-	db *sql.DB
+	repo *repository.CatalogRepository
 }
 
 // Este método consulta la tabla 'comercios'
 func (s *server) ListComercios(ctx context.Context, req *pb.ListComerciosRequest) (*pb.ListComerciosResponse, error) {
 	log.Printf("📥 ListComercios: SoloActivos=%v", req.SoloActivos)
 
-	query := "SELECT id, nombre, direccion, activo FROM comercios"
-	if req.SoloActivos {
-		query += " WHERE activo = true"
-	}
-
-	rows, err := s.db.Query(query)
+	comercios, err := s.repo.ListComercios(ctx, req.SoloActivos)
 	if err != nil {
 		log.Printf("❌ Error en ListComercios: %v", err)
 		return nil, err
-	}
-	defer rows.Close()
-
-	var comercios []*pb.Comercio
-	for rows.Next() {
-		c := &pb.Comercio{}
-		if err := rows.Scan(&c.Id, &c.Nombre, &c.Direccion, &c.Activo); err != nil {
-			return nil, err
-		}
-		comercios = append(comercios, c)
 	}
 
 	return &pb.ListComerciosResponse{Comercios: comercios}, nil
@@ -52,20 +39,10 @@ func (s *server) ListComercios(ctx context.Context, req *pb.ListComerciosRequest
 func (s *server) GetMenuByComercio(ctx context.Context, req *pb.GetMenuByComercioRequest) (*pb.GetMenuByComercioResponse, error) {
 	log.Printf("📥 GetMenuByComercio: ID=%s", req.ComercioId)
 
-	rows, err := s.db.Query("SELECT id, nombre, precio, comercio_id, disponible FROM productos WHERE comercio_id = $1", req.ComercioId)
+	productos, err := s.repo.GetMenuByComercio(ctx, req.ComercioId)
 	if err != nil {
 		log.Printf("❌ Error en GetMenuByComercio: %v", err)
 		return nil, err
-	}
-	defer rows.Close()
-
-	var productos []*pb.Product
-	for rows.Next() {
-		p := &pb.Product{}
-		if err := rows.Scan(&p.Id, &p.Nombre, &p.Precio, &p.ComercioId, &p.Disponible); err != nil {
-			return nil, err
-		}
-		productos = append(productos, p)
 	}
 
 	return &pb.GetMenuByComercioResponse{Productos: productos}, nil
@@ -75,13 +52,13 @@ func (s *server) GetMenuByComercio(ctx context.Context, req *pb.GetMenuByComerci
 func (s *server) GetProductDetails(ctx context.Context, req *pb.GetProductDetailsRequest) (*pb.Product, error) {
 	log.Printf("📥 GetProductDetails: ID=%s", req.Id)
 
-	p := &pb.Product{}
-	err := s.db.QueryRow("SELECT id, nombre, precio, comercio_id, disponible FROM productos WHERE id = $1", req.Id).
-		Scan(&p.Id, &p.Nombre, &p.Precio, &p.ComercioId, &p.Disponible)
-
+	p, err := s.repo.GetProductDetails(ctx, req.Id)
 	if err != nil {
+		if err == repository.ErrNotFound {
+			return nil, status.Error(codes.NotFound, "producto no encontrado")
+		}
 		log.Printf("❌ Error en GetProductDetails: %v", err)
-		return nil, fmt.Errorf("producto no encontrado: %v", err)
+		return nil, err
 	}
 
 	return p, nil
@@ -90,34 +67,13 @@ func (s *server) GetProductDetails(ctx context.Context, req *pb.GetProductDetail
 // Esta función main inicializa la conexión a la BD y el servidor gRPC.
 // Agrega una lógica de reintento para asegurar que el servicio se inicie solo cuando la BD esté lista.
 func main() {
-	// Se obtiene la configuración de conexión (Docker usa variables de entorno)
-	connStr := os.Getenv("DB_URL")
-	if connStr == "" {
-		connStr = "user=postgres password=admin123 host=localhost port=5432 dbname=foodrush_db sslmode=disable"
-	}
-
-	// Se conecta a PostgreSQL con reintentos (Wait-for-DB logic)
-	var db *sql.DB
-	var err error
-	for i := 1; i <= 5; i++ {
-		db, err = sql.Open("postgres", connStr)
-		if err == nil {
-			err = db.Ping()
-		}
-
-		if err == nil {
-			break
-		}
-
-		log.Printf("⏳ [%d/5] Esperando a que la DB esté lista...", i)
-		time.Sleep(2 * time.Second)
-	}
-
+	dbConn, err := openDBWithRetry()
 	if err != nil {
 		log.Fatalf("❌ No se pudo conectar a la DB tras varios intentos: %v", err)
 	}
-	defer db.Close()
+	defer dbConn.Close()
 	log.Println("✅ Conexión exitosa a PostgreSQL")
+	repo := repository.NewCatalogRepository(dbConn)
 
 	// Se inicia el servidor gRPC
 	lis, err := net.Listen("tcp", ":50051")
@@ -126,10 +82,25 @@ func main() {
 	}
 
 	srv := grpc.NewServer()
-	pb.RegisterCatalogServiceServer(srv, &server{db: db})
+	pb.RegisterCatalogServiceServer(srv, &server{repo: repo})
 
 	log.Println("🚀 FoodRush Catalog Service (Go) escuchando en :50051")
 	if err := srv.Serve(lis); err != nil {
 		log.Fatalf("❌ Error al servir gRPC: %v", err)
 	}
+}
+
+func openDBWithRetry() (*sql.DB, error) {
+	var dbConn *sql.DB
+	var err error
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+	for i := 1; i <= 5; i++ {
+		dbConn, err = db.NewPostgresDB()
+		if err == nil {
+			return dbConn, nil
+		}
+		log.Printf("⏳ [%d/5] Esperando a que la DB esté lista...", i)
+		time.Sleep(2*time.Second + time.Duration(rand.Intn(300))*time.Millisecond)
+	}
+	return nil, err
 }
