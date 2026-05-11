@@ -1,20 +1,20 @@
 version: '3.8'
 
 services:
-  postgresql-user:
+  user-database:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: user_admin
-      POSTGRES_PASSWORD: user_password
-      POSTGRES_DB: user_db
+      POSTGRES_USER: ${USER_DB_USER}
+      POSTGRES_PASSWORD: ${USER_DB_PASSWORD}
+      POSTGRES_DB: ${USER_DB_NAME}
     ports:
       - "5432:5432"
     volumes:
-      - postgresql-user-data:/var/lib/postgresql/data
+      - user-database-data:/var/lib/postgresql/data
       - ./user-service/db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user_admin -d user_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${USER_DB_USER} -d ${USER_DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,34 +27,33 @@ services:
     image: foodrush-user-service:local
     restart: unless-stopped
     environment:
-      DB_HOST: postgresql-user
-      DB_PORT: 5432
-      DB_USER: user_admin
-      DB_PASSWORD: user_password
-      DB_NAME: user_db
-      DB_SSLMODE: disable
-      GRPC_PORT: 50051
+      DB_HOST: user-database
+      DB_PORT: ${USER_DB_PORT}
+      DB_USER: ${USER_DB_USER}
+      DB_PASSWORD: ${USER_DB_PASSWORD}
+      DB_NAME: ${USER_DB_NAME}
+      DB_SSLMODE: ${USER_DB_SSLMODE}
+      GRPC_PORT: ${USER_SERVICE_GRPC_PORT}
     depends_on:
-      postgresql-user:
+      user-database:
         condition: service_healthy
     ports:
       - "50051:50051"
 
-  postgresql-catalog:
+  catalog-database:
     image: postgres:16-alpine
-    container_name: foodrush_db_container
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: admin123
-      POSTGRES_DB: foodrush_db
+      POSTGRES_USER: ${CATALOG_DB_USER}
+      POSTGRES_PASSWORD: ${CATALOG_DB_PASSWORD}
+      POSTGRES_DB: ${CATALOG_DB_NAME}
     ports:
       - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - catalog-database-data:/var/lib/postgresql/data
       - ./catalog-service/init-db/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d foodrush_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${CATALOG_DB_USER} -d ${CATALOG_DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -64,41 +63,40 @@ services:
     container_name: foodrush_catalog
     restart: on-failure
     depends_on:
-      postgresql-catalog:
+      catalog-database:
         condition: service_healthy
     ports:
-      - "50052:50051"
+      - "${CATALOG_SERVICE_HOST_PORT}:${CATALOG_SERVICE_GRPC_PORT}"
     environment:
-      DB_URL: user=postgres password=admin123 host=postgresql-catalog port=5432 dbname=foodrush_db sslmode=disable
+      DB_URL: user=${CATALOG_DB_USER} password=${CATALOG_DB_PASSWORD} host=${CATALOG_DB_HOST} port=${CATALOG_DB_PORT} dbname=${CATALOG_DB_NAME} sslmode=${CATALOG_DB_SSLMODE}
 
-  mongodb-orders:
+  orders-database:
     image: mongo:latest
     ports:
-      - "27017:27017"
+      - "${ORDERS_DB_HOST_PORT}:${ORDERS_DB_PORT}"
     volumes:
-      - mongodb_data:/data/db
+      - orders-database-data:/data/db
 
   orders-service:
     build: ./order-service
     ports:
-      - "50053:50053"
+      - "${ORDERS_SERVICE_HOST_PORT}:${ORDERS_SERVICE_GRPC_PORT}"
     environment:
-      - MONGO_URI=mongodb://mongodb-orders:27017
-      - PORT=50053
+      - MONGO_URI=mongodb://${ORDERS_DB_HOST}:${ORDERS_DB_PORT}
+      - PORT=${ORDERS_SERVICE_GRPC_PORT}
     depends_on:
-      - mongodb-orders
+      - orders-database
 
-  postgres:
+  payment-database:
     image: postgres:16
-    container_name: payments-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: payments_db
+      POSTGRES_USER: ${PAYMENT_DB_USER}
+      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD}
+      POSTGRES_DB: ${PAYMENT_DB_NAME}
     ports:
-      - "5434:5432"
+      - "${PAYMENT_DB_HOST_PORT}:${PAYMENT_DB_PORT}"
     volumes:
-      - payment_postgres_data:/var/lib/postgresql/data
+      - payment-database-data:/var/lib/postgresql/data
 
   payments-service:
     build:
@@ -106,18 +104,18 @@ services:
       dockerfile: Dockerfile
     container_name: payments-service
     ports:
-      - "50054:50051"
+      - "${PAYMENTS_SERVICE_HOST_PORT}:${PAYMENTS_SERVICE_GRPC_PORT}"
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: payments_db
+      DB_HOST: ${PAYMENT_DB_HOST}
+      DB_PORT: ${PAYMENT_DB_PORT}
+      DB_USER: ${PAYMENT_DB_USER}
+      DB_PASSWORD: ${PAYMENT_DB_PASSWORD}
+      DB_NAME: ${PAYMENT_DB_NAME}
     depends_on:
-      - postgres
+      - payment-database
 
 volumes:
-  postgresql-user-data:
-  postgres_data:
-  mongodb_data:
-  payment_postgres_data:
+  user-database-data:
+  catalog-database-data:
+  orders-database-data:
+  payment-database-data:
