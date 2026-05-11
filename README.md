@@ -1,4 +1,6 @@
-# Proyecto-Sistemas-Distribuidos
+# FoodRush
+
+##### Proyecto para asignatura: Sistemas Distribuidos y Escalables
 
 ## Levantar con Docker Compose
 
@@ -12,6 +14,11 @@ cp .env.example .env
 
 ```bash
 docker compose up --build
+```
+ó dependiendo de tu versión de Docker Compose:
+
+```bash
+docker-compose up --build
 ```
 
 ## Variables de Entorno
@@ -90,4 +97,6 @@ curl http://localhost:8080/payments/order/ORDER_ID
 
 ## Documento Técnico
 
-Ver `docs/documento-tecnico.md`.
+Ver en sección de `docs` el archivo `documento-tecnico.md`.
+
+[Link al Documento tecnico](https://github.com/mh0316/FoodRush/blob/develop/docs/documento-tecnico.md)
