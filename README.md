@@ -1,6 +1,12 @@
 # FoodRush
 
-##### Proyecto para asignatura: Sistemas Distribuidos y Escalables
+##### Un proyecto para la asignatura: Sistemas Distribuidos y Escalables
+
+
+## Requisitos
+
+Se requiere Docker con soporte para `docker compose`.
+
 
 ## Levantar con Docker Compose
 
@@ -24,6 +30,10 @@ docker-compose up --build
 ## Variables de Entorno
 
 Usa `.env.example` como referencia para completar `.env`.
+
+El punto de entrada público es `http://localhost:8080`.
+
+Los servicios internos (`user-service`, `catalog-service`, `orders-service`, `payments-service`) no se consumen directamente desde fuera; solo se accede a través del `api-gateway`.
 
 ## Probar API Gateway
 
