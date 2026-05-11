@@ -31,6 +31,16 @@ SET
     direccion = EXCLUDED.direccion, 
     activo = EXCLUDED.activo;
 
+INSERT INTO comercios (id, nombre, direccion, activo)
+VALUES
+    ('00000000-0000-0000-0000-000000000001', 'Tienda Central', 'Calle 1 #100', true),
+    ('00000000-0000-0000-0000-000000000002', 'Pizzeria Norte', 'Avenida 2 #200', true)
+ON CONFLICT (id) DO UPDATE
+SET
+    nombre = EXCLUDED.nombre,
+    direccion = EXCLUDED.direccion,
+    activo = EXCLUDED.activo;
+
 -- Se insertan los productos (He cambiado la 'p' inicial por un '1')
 INSERT INTO productos (id, comercio_id, nombre, precio, disponible)
 VALUES 
@@ -52,4 +62,14 @@ ON CONFLICT (id) DO UPDATE
 SET 
     nombre = EXCLUDED.nombre, 
     precio = EXCLUDED.precio, 
+    disponible = EXCLUDED.disponible;
+
+INSERT INTO productos (id, comercio_id, nombre, precio, disponible)
+VALUES
+    ('00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', 'Combo Clasico', 12.00, true),
+    ('00000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000002', 'Pizza Margarita', 15.00, true)
+ON CONFLICT (id) DO UPDATE
+SET
+    nombre = EXCLUDED.nombre,
+    precio = EXCLUDED.precio,
     disponible = EXCLUDED.disponible;

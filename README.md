@@ -115,30 +115,30 @@ curl -X POST http://localhost:8080/users \
 curl http://localhost:8080/catalog/comercios
 ```
 
-3. Consultar menú de un comercio:
+3. Consultar menú del comercio demo:
 
 ```bash
-curl http://localhost:8080/catalog/comercios/COMERCIO_ID/menu
+curl http://localhost:8080/catalog/comercios/c1111111-1111-1111-1111-111111111111/menu
 ```
 
-4. Consultar detalle de producto:
+4. Consultar detalle del producto demo principal:
 
 ```bash
-curl http://localhost:8080/catalog/products/PRODUCT_ID
+curl http://localhost:8080/catalog/products/11111111-1111-1111-1111-111111111111
 ```
 
-5. Crear pedido:
+5. Crear pedido usando el `user_id` devuelto por el paso 1:
 
 ```bash
 curl -X POST http://localhost:8080/orders \
   -H 'Content-Type: application/json' \
-  -d '{"user_id":"USER_ID_REAL","comercio_id":"COMERCIO_ID","items":[{"producto_id":"PRODUCT_ID","cantidad":2}]}'
+  -d '{"user_id":"USER_ID_DEVUELTO","comercio_id":"c1111111-1111-1111-1111-111111111111","items":[{"producto_id":"11111111-1111-1111-1111-111111111111","cantidad":2}]}'
 ```
 
-6. Obtener detalle del pedido:
+6. Obtener detalle del pedido usando el `id` devuelto por el paso 5:
 
 ```bash
-curl http://localhost:8080/orders/ORDER_ID_REAL
+curl http://localhost:8080/orders/ORDER_ID_DEVUELTO
 ```
 
 7. Confirmar retiro del pedido:
@@ -149,18 +149,18 @@ curl -X POST http://localhost:8080/orders/pickup/confirm \
   -d '{"qr_retiro":"QR_REAL"}'
 ```
 
-8. Procesar pago:
+8. Procesar pago usando el `order_id` devuelto por el paso 5:
 
 ```bash
 curl -X POST http://localhost:8080/payments/process \
   -H 'Content-Type: application/json' \
-  -d '{"order_id":"ORDER_ID_REAL","user_id":"USER_ID_REAL","amount":1000,"metodo_pago_token":"tok_ana_123"}'
+  -d '{"order_id":"ORDER_ID_DEVUELTO","user_id":"USER_ID_DEVUELTO","amount":20,"metodo_pago_token":"tok_ana_123"}'
 ```
 
 9. Consultar pago por pedido:
 
 ```bash
-curl http://localhost:8080/payments/order/ORDER_ID_REAL
+curl http://localhost:8080/payments/order/ORDER_ID_DEVUELTO
 ```
 
 ## Documento Técnico
