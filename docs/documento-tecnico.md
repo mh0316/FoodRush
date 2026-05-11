@@ -138,7 +138,7 @@ Se adoptó gRPC con Protobuf para la comunicación interna debido a su tipado fu
 
 La separación en usuarios, catálogo, pedidos y pagos responde a límites de negocio observables y no a una división accidental del código. Esta decisión incrementa la cohesión interna de cada servicio y reduce el riesgo de mezclar responsabilidades. El costo es una mayor coordinación entre componentes y un mayor esfuerzo inicial de integración.
 
-En el caso de pedidos, existe una dependencia de lectura controlada hacia catálogo para resolver precios actuales. Esta decisión mejora la coherencia del total calculado, pero introduce una dependencia temporal entre ambos servicios durante la creación de una orden.
+En el caso de pedidos, existe una dependencia de lectura controlada hacia catálogo para resolver precios actuales. `orders-service` consulta a `catalog-service` durante `CreateOrder` para obtener el precio real de cada producto y calcular el total con datos vigentes. Esta decisión mejora la coherencia del negocio, pero introduce una dependencia temporal entre ambos servicios durante la creación de una orden.
 
 Cuando catálogo no responde, `orders-service` reintenta la lectura unas pocas veces y devuelve un error controlado al caller en lugar de colgarse.
 
