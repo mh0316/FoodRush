@@ -9,6 +9,15 @@ message OrderItem {
   int32 cantidad = 2;
 }
 
+message OutboxEvent {
+  string id = 1;
+  string event_type = 2;
+  string payload = 3; // JSON
+  map<string, string> headers = 4;
+  bool processed = 5;
+  string created_at = 6;
+}
+
 message Order {
   string id = 1;
   string user_id = 2;
@@ -18,6 +27,7 @@ message Order {
   string status = 6;
   string qr_retiro = 7;
   string comprobante_url = 8;
+  repeated OutboxEvent outbox = 9;
 }
 
 

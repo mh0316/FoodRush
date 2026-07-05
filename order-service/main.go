@@ -83,6 +83,11 @@ func main() {
 
 	go paymentConsumer.Start(context.Background())
 
+	// Start Outbox Relay
+	relayInterval := 5 * time.Second
+	relay := orderkafka.NewOutboxRelay(repo, producer, relayInterval)
+	go relay.Start(context.Background())
+
 	log.Printf(
 		"[orders-service] Kafka conectado broker=%s produce_topic=%s consume_topic=%s group=%s",
 		kafkaBroker,

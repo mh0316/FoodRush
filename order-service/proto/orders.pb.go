@@ -73,6 +73,89 @@ func (x *OrderItem) GetCantidad() int32 {
 	return 0
 }
 
+type OutboxEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	EventType     string                 `protobuf:"bytes,2,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	Payload       string                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
+	Headers       map[string]string      `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+	Processed     bool                   `protobuf:"varint,5,opt,name=processed,proto3" json:"processed,omitempty"`
+	CreatedAt     string                 `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OutboxEvent) Reset() {
+	*x = OutboxEvent{}
+	mi := &file_proto_orders_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OutboxEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OutboxEvent) ProtoMessage() {}
+
+func (x *OutboxEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_orders_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (*OutboxEvent) Descriptor() ([]byte, []int) {
+	return file_proto_orders_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *OutboxEvent) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *OutboxEvent) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *OutboxEvent) GetPayload() string {
+	if x != nil {
+		return x.Payload
+	}
+	return ""
+}
+
+func (x *OutboxEvent) GetHeaders() map[string]string {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
+}
+
+func (x *OutboxEvent) GetProcessed() bool {
+	if x != nil {
+		return x.Processed
+	}
+	return false
+}
+
+func (x *OutboxEvent) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
 type Order struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -83,6 +166,7 @@ type Order struct {
 	Status         string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
 	QrRetiro       string                 `protobuf:"bytes,7,opt,name=qr_retiro,json=qrRetiro,proto3" json:"qr_retiro,omitempty"`
 	ComprobanteUrl string                 `protobuf:"bytes,8,opt,name=comprobante_url,json=comprobanteUrl,proto3" json:"comprobante_url,omitempty"`
+	Outbox         []*OutboxEvent         `protobuf:"bytes,9,rep,name=outbox,proto3" json:"outbox,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }

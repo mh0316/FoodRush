@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"strings"
@@ -85,37 +86,39 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 		return nil, status.Errorf(codes.Internal, "failed to create order")
 	}
 
+	// SAGA: Add event to Outbox within the document (atomic in MongoDB for single document)
+	eventPayload, _ := json.Marshal(map[string]interface{}{
+		"order_id":    order.Id,
+		"user_id":     order.UserId,
+		"comercio_id": order.ComercioId,
+		"total":       order.Total,
+		"status":      order.Status,
+	})
+
+	outboxEvent := &pb.OutboxEvent{
+		Id:        uuid.New().String(),
+		EventType: "foodrush.orders.created",
+		Payload:   string(eventPayload),
+		Headers: map[string]string{
+			"correlation_id": correlationID,
+		},
+		Processed: false,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if err := s.repo.AddOutboxEvent(ctx, order.Id, outboxEvent); err != nil {
+		log.Printf("[orders-service] failed to add outbox event correlation_id=%s order_id=%s error=%v", correlationID, order.Id, err)
+		// We could decide to fail the whole request or just log.
+		// Since order is created, we should try to ensure the event is eventually sent.
+	}
+
 	log.Printf(
-		"[orders-service] order created correlation_id=%s order_id=%s user_id=%s total=%.2f",
+		"[orders-service] order created and outbox event added correlation_id=%s order_id=%s user_id=%s total=%.2f",
 		correlationID,
 		order.Id,
 		order.UserId,
 		order.Total,
 	)
-
-	if s.producer != nil {
-		event := orderkafka.OrderCreatedEvent{
-			EventID:       uuid.New().String(),
-			CorrelationID: correlationID,
-			EventType:     "order.created",
-			Source:        "orders-service",
-			OrderID:       order.Id,
-			UserID:        order.UserId,
-			ComercioID:    order.ComercioId,
-			Total:         order.Total,
-			Status:        order.Status,
-			Timestamp:     time.Now().UTC().Format(time.RFC3339),
-		}
-
-		if err := s.producer.PublishOrderCreated(ctx, event); err != nil {
-			log.Printf(
-				"[orders-service] order was created but Kafka publish failed correlation_id=%s order_id=%s error=%v",
-				correlationID,
-				order.Id,
-				err,
-			)
-		}
-	}
 
 	return &pb.CreateOrderResponse{
 		Id:     order.Id,

@@ -45,7 +45,10 @@ func (p *Producer) PublishPaymentProcessed(ctx context.Context, event PaymentPro
 	err = p.writer.WriteMessages(ctx, kafka.Message{
 		Key:   []byte(event.OrderID),
 		Value: body,
-		Time:  time.Now(),
+		Headers: []kafka.Header{
+			{Key: "correlation_id", Value: []byte(event.CorrelationID)},
+		},
+		Time: time.Now(),
 	})
 
 	if err != nil {
@@ -68,6 +71,22 @@ func (p *Producer) PublishPaymentProcessed(ctx context.Context, event PaymentPro
 	)
 
 	return nil
+}
+
+func (p *Producer) PublishGeneric(ctx context.Context, topic string, key string, payload []byte, headers map[string]string) error {
+	var kHeaders []kafka.Header
+	for k, v := range headers {
+		kHeaders = append(kHeaders, kafka.Header{Key: k, Value: []byte(v)})
+	}
+
+	err := p.writer.WriteMessages(ctx, kafka.Message{
+		Topic:   topic,
+		Key:     []byte(key),
+		Value:   payload,
+		Headers: kHeaders,
+		Time:    time.Now(),
+	})
+	return err
 }
 
 func (p *Producer) Close() error {

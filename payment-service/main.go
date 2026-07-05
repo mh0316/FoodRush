@@ -8,12 +8,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gonzalo-fch/PaymentsService/internal/db"
 	"github.com/gonzalo-fch/PaymentsService/internal/models"
 	"github.com/gonzalo-fch/PaymentsService/internal/repository"
 	paymentkafka "github.com/gonzalo-fch/PaymentsService/kafka"
 	pb "github.com/gonzalo-fch/PaymentsService/pb"
+	"github.com/google/uuid"
 
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
@@ -105,10 +105,16 @@ func main() {
 		orderCreatedTopic,
 		consumerGroup,
 		paymentProducer,
+		repo,
 	)
 	defer paymentConsumer.Close()
 
 	go paymentConsumer.Start(context.Background())
+
+	// Start Outbox Relay
+	relayInterval := 5 * time.Second
+	relay := paymentkafka.NewOutboxRelay(repo, paymentProducer, relayInterval)
+	go relay.Start(context.Background())
 
 	port := os.Getenv("PORT")
 	if port == "" {

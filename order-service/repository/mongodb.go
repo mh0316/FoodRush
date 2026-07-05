@@ -88,3 +88,32 @@ func (db *MongoDB) UpdateOrderStatusByID(ctx context.Context, orderID string, st
 
 	return nil
 }
+
+func (db *MongoDB) GetUnprocessedEvents(ctx context.Context) ([]*pb.Order, error) {
+	filter := bson.M{"outbox.processed": false}
+	cursor, err := db.collection.Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var orders []*pb.Order
+	if err := cursor.All(ctx, &orders); err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
+func (db *MongoDB) MarkEventAsProcessed(ctx context.Context, orderID string, eventID string) error {
+	filter := bson.M{"id": orderID, "outbox.id": eventID}
+	update := bson.M{"$set": bson.M{"outbox.$.processed": true}}
+	_, err := db.collection.UpdateOne(ctx, filter, update)
+	return err
+}
+
+func (db *MongoDB) AddOutboxEvent(ctx context.Context, orderID string, event *pb.OutboxEvent) error {
+	filter := bson.M{"id": orderID}
+	update := bson.M{"$push": bson.M{"outbox": event}}
+	_, err := db.collection.UpdateOne(ctx, filter, update)
+	return err
+}

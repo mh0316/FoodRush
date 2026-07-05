@@ -11,4 +11,8 @@ type OrderStore interface {
 	GetOrder(ctx context.Context, id string) (*pb.Order, error)
 	UpdateOrderStatus(ctx context.Context, qrRetiro string, status string) (*pb.Order, error)
 	UpdateOrderStatusByID(ctx context.Context, orderID string, status string) error
+	// Outbox methods
+	GetUnprocessedEvents(ctx context.Context) ([]*pb.Order, error)
+	MarkEventAsProcessed(ctx context.Context, orderID string, eventID string) error
+	AddOutboxEvent(ctx context.Context, orderID string, event *pb.OutboxEvent) error
 }
