@@ -50,7 +50,9 @@ func main() {
 	}
 
 	s := grpc.NewServer()
-	orderServer := server.NewOrderServer(repo, catalogpb.NewCatalogServiceClient(catalogConn))
+	rawCatalogClient := catalogpb.NewCatalogServiceClient(catalogConn)
+	resilientCatalogClient := server.NewResilientCatalogClient(rawCatalogClient, 3, 10*time.Second) // 3 max failures, 10s cooldown
+	orderServer := server.NewOrderServer(repo, resilientCatalogClient)
 	pb.RegisterOrderServiceServer(s, orderServer)
 	
 	// Register reflection service on gRPC server to allow grpcurl to work

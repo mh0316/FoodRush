@@ -68,6 +68,8 @@ services:
     build:
       context: ./order-service
       dockerfile: Dockerfile
+    ports:
+      - "50051:${ORDERS_SERVICE_GRPC_PORT}"
     environment:
       - MONGO_URI=mongodb://orders-database:${ORDERS_DB_PORT}
       - PORT=${ORDERS_SERVICE_GRPC_PORT}

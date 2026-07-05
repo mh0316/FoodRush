@@ -85,6 +85,10 @@ func (s *OrderServer) getProduct(ctx context.Context, productID string) (*catalo
 		if err == nil {
 			return product, nil
 		}
+		if errors.Is(err, ErrCircuitOpen) {
+			log.Printf("catalog lookup aborted: circuit breaker is open")
+			return nil, status.Error(codes.Unavailable, "catalog service circuit breaker is open")
+		}
 		lastErr = err
 		log.Printf("catalog lookup retry %d/3 for product %s: %v", i, productID, err)
 		time.Sleep(250 * time.Millisecond)

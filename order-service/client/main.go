@@ -26,10 +26,10 @@ func main() {
 	log.Println("Enviando petición CreateOrder...")
 	res, err := client.CreateOrder(ctx, &pb.CreateOrderRequest{
 		UserId:     "usuario-prueba-123",
-		ComercioId: "mcdonalds-centro",
+		ComercioId: "c1111111-1111-1111-1111-111111111111",
 		Items: []*pb.OrderItem{
-			{ProductoId: "hamburguesa", Cantidad: 2},
-			{ProductoId: "papas", Cantidad: 1},
+			{ProductoId: "11111111-1111-1111-1111-111111111111", Cantidad: 2}, // Hamburguesa Demo ($10.00)
+			{ProductoId: "22222222-2222-2222-2222-222222222222", Cantidad: 1}, // Bebida Demo ($2.50)
 		},
 	})
 
