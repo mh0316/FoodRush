@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	pb "github.com/gonzalo-fch/PaymentsService/pb"
 	"github.com/gonzalo-fch/PaymentsService/internal/db"
 	"github.com/gonzalo-fch/PaymentsService/internal/models"
 	"github.com/gonzalo-fch/PaymentsService/internal/repository"
+	paymentkafka "github.com/gonzalo-fch/PaymentsService/kafka"
+	pb "github.com/gonzalo-fch/PaymentsService/pb"
+
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
 )
@@ -37,7 +38,10 @@ func (s *server) ProcessPayment(ctx context.Context, req *pb.ProcessPaymentReque
 		return nil, err
 	}
 
-	return &pb.ProcessPaymentResponse{Id: payment.ID, Status: pb.PaymentStatus_APPROVED}, nil
+	return &pb.ProcessPaymentResponse{
+		Id:     payment.ID,
+		Status: pb.PaymentStatus_APPROVED,
+	}, nil
 }
 
 func (s *server) GetPaymentByOrder(ctx context.Context, req *pb.GetPaymentByOrderRequest) (*pb.GetPaymentByOrderResponse, error) {
@@ -54,7 +58,11 @@ func (s *server) GetPaymentByOrder(ctx context.Context, req *pb.GetPaymentByOrde
 		status = pb.PaymentStatus_DECLINED
 	}
 
-	return &pb.GetPaymentByOrderResponse{Id: payment.ID, Amount: payment.Amount, Status: status}, nil
+	return &pb.GetPaymentByOrderResponse{
+		Id:     payment.ID,
+		Amount: payment.Amount,
+		Status: status,
+	}, nil
 }
 
 func main() {
@@ -67,6 +75,40 @@ func main() {
 	defer database.Close()
 
 	repo := repository.NewPaymentRepository(database)
+
+	// Kafka config
+	kafkaBroker := os.Getenv("KAFKA_BROKERS")
+	if kafkaBroker == "" {
+		kafkaBroker = "kafka:9092"
+	}
+
+	orderCreatedTopic := os.Getenv("KAFKA_TOPIC_ORDER_CREATED")
+	if orderCreatedTopic == "" {
+		orderCreatedTopic = "foodrush.order.created"
+	}
+
+	paymentProcessedTopic := os.Getenv("KAFKA_TOPIC_PAYMENT_PROCESSED")
+	if paymentProcessedTopic == "" {
+		paymentProcessedTopic = "foodrush.payment.processed"
+	}
+
+	consumerGroup := os.Getenv("KAFKA_CONSUMER_GROUP")
+	if consumerGroup == "" {
+		consumerGroup = "payments-service"
+	}
+
+	paymentProducer := paymentkafka.NewProducer(kafkaBroker, paymentProcessedTopic)
+	defer paymentProducer.Close()
+
+	paymentConsumer := paymentkafka.NewConsumer(
+		kafkaBroker,
+		orderCreatedTopic,
+		consumerGroup,
+		paymentProducer,
+	)
+	defer paymentConsumer.Close()
+
+	go paymentConsumer.Start(context.Background())
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -82,6 +124,13 @@ func main() {
 	pb.RegisterPaymentsServiceServer(srv, &server{repo: repo})
 
 	log.Printf("servidor gRPC escuchando en :%s", port)
+	log.Printf("[payments-service] Kafka conectado broker=%s consume_topic=%s produce_topic=%s group=%s",
+		kafkaBroker,
+		orderCreatedTopic,
+		paymentProcessedTopic,
+		consumerGroup,
+	)
+
 	if err := srv.Serve(lis); err != nil {
 		log.Fatalf("error al servir: %v", err)
 	}
@@ -90,6 +139,7 @@ func main() {
 func openDBWithRetry() (*sql.DB, error) {
 	var database *sql.DB
 	var err error
+
 	for i := 1; i <= 5; i++ {
 		database, err = db.NewPostgresDB()
 		if err == nil {

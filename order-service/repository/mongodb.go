@@ -5,10 +5,11 @@ import (
 	"errors"
 	"time"
 
+	pb "foodrush/orders/proto"
+
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	pb "foodrush/orders/proto"
 )
 
 var ErrNotFound = errors.New("not found")
@@ -66,4 +67,24 @@ func (db *MongoDB) UpdateOrderStatus(ctx context.Context, qrRetiro string, statu
 		return nil, err
 	}
 	return &updatedOrder, nil
+}
+
+func (db *MongoDB) UpdateOrderStatusByID(ctx context.Context, orderID string, status string) error {
+	filter := bson.M{"id": orderID}
+	update := bson.M{
+		"$set": bson.M{
+			"status": status,
+		},
+	}
+
+	result, err := db.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return ErrNotFound
+	}
+
+	return nil
 }

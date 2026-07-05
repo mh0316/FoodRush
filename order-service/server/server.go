@@ -7,22 +7,33 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	catalogpb "foodrush/orders/catalogpb"
+	orderkafka "foodrush/orders/kafka"
 	pb "foodrush/orders/proto"
 	"foodrush/orders/repository"
+
+	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 type OrderServer struct {
 	pb.UnimplementedOrderServiceServer
-	repo    repository.OrderStore
-	catalog catalogpb.CatalogServiceClient
+	repo     repository.OrderStore
+	catalog  catalogpb.CatalogServiceClient
+	producer *orderkafka.Producer
 }
 
-func NewOrderServer(repo repository.OrderStore, catalog catalogpb.CatalogServiceClient) *OrderServer {
-	return &OrderServer{repo: repo, catalog: catalog}
+func NewOrderServer(
+	repo repository.OrderStore,
+	catalog catalogpb.CatalogServiceClient,
+	producer *orderkafka.Producer,
+) *OrderServer {
+	return &OrderServer{
+		repo:     repo,
+		catalog:  catalog,
+		producer: producer,
+	}
 }
 
 func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderRequest) (*pb.CreateOrderResponse, error) {
@@ -31,6 +42,7 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 	if req.UserId == "" || req.ComercioId == "" || len(req.Items) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "missing required fields")
 	}
+
 	for _, item := range req.Items {
 		if strings.TrimSpace(item.ProductoId) == "" || item.Cantidad <= 0 {
 			return nil, status.Error(codes.InvalidArgument, "invalid order items")
@@ -38,20 +50,24 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 	}
 
 	var total float64
+
 	for _, item := range req.Items {
 		product, err := s.getProduct(ctx, item.ProductoId)
 		if err != nil {
 			return nil, err
 		}
+
 		if !product.Disponible {
 			return nil, status.Error(codes.FailedPrecondition, "product unavailable")
 		}
+
 		total += float64(item.Cantidad) * product.Precio
 	}
 
 	orderId := uuid.New().String()
 	qrRetiro := "QR_" + uuid.New().String()
-	
+	correlationID := uuid.New().String()
+
 	order := &pb.Order{
 		Id:             orderId,
 		UserId:         req.UserId,
@@ -69,6 +85,38 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 		return nil, status.Errorf(codes.Internal, "failed to create order")
 	}
 
+	log.Printf(
+		"[orders-service] order created correlation_id=%s order_id=%s user_id=%s total=%.2f",
+		correlationID,
+		order.Id,
+		order.UserId,
+		order.Total,
+	)
+
+	if s.producer != nil {
+		event := orderkafka.OrderCreatedEvent{
+			EventID:       uuid.New().String(),
+			CorrelationID: correlationID,
+			EventType:     "order.created",
+			Source:        "orders-service",
+			OrderID:       order.Id,
+			UserID:        order.UserId,
+			ComercioID:    order.ComercioId,
+			Total:         order.Total,
+			Status:        order.Status,
+			Timestamp:     time.Now().UTC().Format(time.RFC3339),
+		}
+
+		if err := s.producer.PublishOrderCreated(ctx, event); err != nil {
+			log.Printf(
+				"[orders-service] order was created but Kafka publish failed correlation_id=%s order_id=%s error=%v",
+				correlationID,
+				order.Id,
+				err,
+			)
+		}
+	}
+
 	return &pb.CreateOrderResponse{
 		Id:     order.Id,
 		Total:  order.Total,
@@ -78,19 +126,32 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 
 func (s *OrderServer) getProduct(ctx context.Context, productID string) (*catalogpb.Product, error) {
 	var lastErr error
+
 	for i := 1; i <= 3; i++ {
 		lookupCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		product, err := s.catalog.GetProductDetails(lookupCtx, &catalogpb.GetProductDetailsRequest{Id: productID})
+
+		product, err := s.catalog.GetProductDetails(
+			lookupCtx,
+			&catalogpb.GetProductDetailsRequest{Id: productID},
+		)
+
 		cancel()
+
 		if err == nil {
 			return product, nil
 		}
+
 		lastErr = err
 		log.Printf("catalog lookup retry %d/3 for product %s: %v", i, productID, err)
 		time.Sleep(250 * time.Millisecond)
 	}
 
-	return nil, status.Errorf(codes.FailedPrecondition, "catalog unavailable for product %s: %v", productID, lastErr)
+	return nil, status.Errorf(
+		codes.FailedPrecondition,
+		"catalog unavailable for product %s: %v",
+		productID,
+		lastErr,
+	)
 }
 
 func (s *OrderServer) GetOrderDetails(ctx context.Context, req *pb.GetOrderDetailsRequest) (*pb.Order, error) {
@@ -101,6 +162,7 @@ func (s *OrderServer) GetOrderDetails(ctx context.Context, req *pb.GetOrderDetai
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "order not found")
 		}
+
 		return nil, status.Errorf(codes.Internal, "failed to get order")
 	}
 
@@ -115,6 +177,7 @@ func (s *OrderServer) ConfirmOrderPickup(ctx context.Context, req *pb.ConfirmOrd
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, status.Errorf(codes.NotFound, "order not found or invalid qr")
 		}
+
 		return nil, status.Errorf(codes.Internal, "failed to update order")
 	}
 
