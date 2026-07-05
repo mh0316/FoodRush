@@ -5,7 +5,6 @@ import (
 	"log"
 	"time"
 
-	pb "foodrush/orders/proto"
 	"foodrush/orders/repository"
 )
 
