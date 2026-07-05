@@ -88,16 +88,21 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 
 	// SAGA: Add event to Outbox within the document (atomic in MongoDB for single document)
 	eventPayload, _ := json.Marshal(map[string]interface{}{
-		"order_id":    order.Id,
-		"user_id":     order.UserId,
-		"comercio_id": order.ComercioId,
-		"total":       order.Total,
-		"status":      order.Status,
+		"event_id":       uuid.New().String(),
+		"correlation_id": correlationID,
+		"event_type":     "foodrush.order.created",
+		"source":         "orders-service",
+		"order_id":       order.Id,
+		"user_id":        order.UserId,
+		"comercio_id":    order.ComercioId,
+		"total":          order.Total,
+		"status":         order.Status,
+		"timestamp":      time.Now().UTC().Format(time.RFC3339),
 	})
 
 	outboxEvent := &pb.OutboxEvent{
 		Id:        uuid.New().String(),
-		EventType: "foodrush.orders.created",
+		EventType: "foodrush.order.created",
 		Payload:   string(eventPayload),
 		Headers: map[string]string{
 			"correlation_id": correlationID,

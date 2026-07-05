@@ -60,6 +60,8 @@ func (c *Consumer) Start(ctx context.Context) {
 			continue
 		}
 
+		log.Printf("[payments-service] received raw message from order.created: %s", string(msg.Value))
+
 		var event OrderCreatedEvent
 		if err := json.Unmarshal(msg.Value, &event); err != nil {
 			log.Printf("[payments-service] invalid order.created event: %v message=%s", err, string(msg.Value))
@@ -78,7 +80,7 @@ func (c *Consumer) Start(ctx context.Context) {
 		// Business Logic: Process Payment
 		paymentID := uuid.New().String()
 		paymentStatus := "APPROVED"
-		if event.Total > 1000 { // Just an example for failure case
+		if event.Total >= 1000 { // Just an example for failure case
 			paymentStatus = "DECLINED"
 		}
 
@@ -94,7 +96,7 @@ func (c *Consumer) Start(ctx context.Context) {
 		paymentProcessedEvent := PaymentProcessedEvent{
 			EventID:       uuid.New().String(),
 			CorrelationID: event.CorrelationID,
-			EventType:     "foodrush.payments.processed",
+			EventType:     "foodrush.payment.processed",
 			Source:        "payments-service",
 			OrderID:       event.OrderID,
 			PaymentID:     paymentID,

@@ -45,15 +45,29 @@ func (r *OutboxRelay) processOutbox(ctx context.Context) {
 		return
 	}
 
+	if len(orders) > 0 {
+		log.Printf("[orders-service] Relay: found %d orders with unprocessed events", len(orders))
+	}
+
 	for _, order := range orders {
-		for _, event := range order.Outbox {
+		for i := range order.Outbox {
+			event := order.Outbox[i]
 			if event.Processed {
 				continue
 			}
 
+			// Determinamos el topic. Si event.EventType ya es un topic válido, lo usamos.
+			// Según docker-compose y main.go, el topic es foodrush.order.created
+			topic := event.EventType
+			if topic == "" {
+				topic = "foodrush.order.created"
+			}
+
+			log.Printf("[orders-service] Relay: attempting to publish event %s of type %s for order %s to topic %s", event.Id, event.EventType, order.Id, topic)
+
 			err := r.producer.PublishGeneric(
 				ctx,
-				event.EventType,
+				topic,
 				order.Id,
 				[]byte(event.Payload),
 				event.Headers,
@@ -66,7 +80,7 @@ func (r *OutboxRelay) processOutbox(ctx context.Context) {
 
 			err = r.repo.MarkEventAsProcessed(ctx, order.Id, event.Id)
 			if err != nil {
-				log.Printf("[orders-service] Relay: failed to mark event %s as processed: %v", event.Id, err)
+				log.Printf("[orders-service] Relay: failed to mark event %s as processed: %v", event.Id, order.Id, err)
 			} else {
 				log.Printf("[orders-service] Relay: event %s for order %s published and marked as processed", event.Id, order.Id)
 			}

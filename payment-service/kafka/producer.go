@@ -30,7 +30,6 @@ func NewProducer(broker string, topic string) *Producer {
 		topic: topic,
 		writer: &kafka.Writer{
 			Addr:     kafka.TCP(broker),
-			Topic:    topic,
 			Balancer: &kafka.LeastBytes{},
 		},
 	}
@@ -43,6 +42,7 @@ func (p *Producer) PublishPaymentProcessed(ctx context.Context, event PaymentPro
 	}
 
 	err = p.writer.WriteMessages(ctx, kafka.Message{
+		Topic: p.topic,
 		Key:   []byte(event.OrderID),
 		Value: body,
 		Headers: []kafka.Header{

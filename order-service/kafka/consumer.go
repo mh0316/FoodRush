@@ -20,8 +20,8 @@ type PaymentProcessedEvent struct {
 }
 
 type PaymentConsumer struct {
-	reader        *kafka.Reader
-	updateStatus  func(ctx context.Context, orderID string, status string) error
+	reader       *kafka.Reader
+	updateStatus func(ctx context.Context, orderID string, status string) error
 }
 
 func NewPaymentConsumer(
@@ -56,37 +56,52 @@ func (c *PaymentConsumer) Start(ctx context.Context) {
 			continue
 		}
 
-		var event PaymentProcessedEvent
+		log.Printf("[orders-service] received raw message from payment.processed: %s", string(msg.Value))
+
+		// Intento de deserialización flexible
+		var event map[string]interface{}
 		if err := json.Unmarshal(msg.Value, &event); err != nil {
-			log.Printf("[orders-service] invalid payment.processed event: %v message=%s", err, string(msg.Value))
+			log.Printf("[orders-service] invalid payment.processed event JSON: %v message=%s", err, string(msg.Value))
 			continue
 		}
+
+		// Extraer campos de forma segura
+		orderID, _ := event["order_id"].(string)
+		status, _ := event["status"].(string)
+		correlationID, _ := event["correlation_id"].(string)
+		paymentID, _ := event["payment_id"].(string)
+		eventType, _ := event["event_type"].(string)
 
 		log.Printf(
 			"[orders-service] consumed topic=%s correlation_id=%s event_type=%s order_id=%s payment_id=%s status=%s",
 			msg.Topic,
-			event.CorrelationID,
-			event.EventType,
-			event.OrderID,
-			event.PaymentID,
-			event.Status,
+			correlationID,
+			eventType,
+			orderID,
+			paymentID,
+			status,
 		)
 
+		if orderID == "" {
+			log.Printf("[orders-service] error: order_id is empty in event")
+			continue
+		}
+
 		newOrderStatus := "PAID"
-		if event.Status != "APPROVED" {
+		if status != "APPROVED" {
 			newOrderStatus = "PAYMENT_DECLINED"
 		}
 
 		if c.updateStatus == nil {
-			log.Printf("[orders-service] updateStatus function is nil correlation_id=%s order_id=%s", event.CorrelationID, event.OrderID)
+			log.Printf("[orders-service] updateStatus function is nil correlation_id=%s order_id=%s", correlationID, orderID)
 			continue
 		}
 
-		if err := c.updateStatus(ctx, event.OrderID, newOrderStatus); err != nil {
+		if err := c.updateStatus(ctx, orderID, newOrderStatus); err != nil {
 			log.Printf(
 				"[orders-service] failed to update order after payment correlation_id=%s order_id=%s status=%s error=%v",
-				event.CorrelationID,
-				event.OrderID,
+				correlationID,
+				orderID,
 				newOrderStatus,
 				err,
 			)
@@ -95,8 +110,8 @@ func (c *PaymentConsumer) Start(ctx context.Context) {
 
 		log.Printf(
 			"[orders-service] order status updated after payment correlation_id=%s order_id=%s new_status=%s",
-			event.CorrelationID,
-			event.OrderID,
+			correlationID,
+			orderID,
 			newOrderStatus,
 		)
 	}

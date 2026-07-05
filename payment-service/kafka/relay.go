@@ -52,10 +52,16 @@ func (r *OutboxRelay) processOutbox(ctx context.Context) {
 			_ = json.Unmarshal([]byte(event.Headers), &headers)
 		}
 
-		// Para pagos, la key podría ser el ID del evento o algo relacionado
+		topic := event.EventType
+		if topic == "" {
+			topic = "foodrush.payment.processed"
+		}
+
+		log.Printf("[payment-service] Relay: attempting to publish event %s of type %s to topic %s", event.ID, event.EventType, topic)
+
 		err := r.producer.PublishGeneric(
 			ctx,
-			event.EventType,
+			topic,
 			event.ID,
 			[]byte(event.Payload),
 			headers,

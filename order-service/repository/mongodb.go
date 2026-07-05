@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	pb "foodrush/orders/proto"
@@ -38,6 +39,9 @@ func NewMongoDB(uri, dbName, collName string) (*MongoDB, error) {
 }
 
 func (db *MongoDB) CreateOrder(ctx context.Context, order *pb.Order) error {
+	if order.Outbox == nil {
+		order.Outbox = []*pb.OutboxEvent{}
+	}
 	_, err := db.collection.InsertOne(ctx, order)
 	return err
 }
@@ -90,7 +94,8 @@ func (db *MongoDB) UpdateOrderStatusByID(ctx context.Context, orderID string, st
 }
 
 func (db *MongoDB) GetUnprocessedEvents(ctx context.Context) ([]*pb.Order, error) {
-	filter := bson.M{"outbox.processed": false}
+	// Buscamos órdenes que tengan al menos un evento en la outbox con processed: false
+	filter := bson.M{"outbox": bson.M{"$elemMatch": bson.M{"processed": false}}}
 	cursor, err := db.collection.Find(ctx, filter)
 	if err != nil {
 		return nil, err
@@ -101,13 +106,17 @@ func (db *MongoDB) GetUnprocessedEvents(ctx context.Context) ([]*pb.Order, error
 	if err := cursor.All(ctx, &orders); err != nil {
 		return nil, err
 	}
+	log.Printf("[orders-service] DB: GetUnprocessedEvents found %d orders", len(orders))
 	return orders, nil
 }
 
 func (db *MongoDB) MarkEventAsProcessed(ctx context.Context, orderID string, eventID string) error {
 	filter := bson.M{"id": orderID, "outbox.id": eventID}
 	update := bson.M{"$set": bson.M{"outbox.$.processed": true}}
-	_, err := db.collection.UpdateOne(ctx, filter, update)
+	res, err := db.collection.UpdateOne(ctx, filter, update)
+	if err == nil && res.MatchedCount == 0 {
+		log.Printf("[orders-service] MarkEventAsProcessed: no document matched orderID=%s eventID=%s", orderID, eventID)
+	}
 	return err
 }
 

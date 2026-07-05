@@ -32,7 +32,6 @@ func NewProducer(broker string, topic string) *Producer {
 		topic: topic,
 		writer: &kafka.Writer{
 			Addr:     kafka.TCP(broker),
-			Topic:    topic,
 			Balancer: &kafka.LeastBytes{},
 		},
 	}
@@ -45,6 +44,7 @@ func (p *Producer) PublishOrderCreated(ctx context.Context, event OrderCreatedEv
 	}
 
 	err = p.writer.WriteMessages(ctx, kafka.Message{
+		Topic: p.topic,
 		Key:   []byte(event.OrderID),
 		Value: body,
 		Headers: []kafka.Header{
@@ -71,8 +71,13 @@ func (p *Producer) PublishGeneric(ctx context.Context, topic string, key string,
 		kHeaders = append(kHeaders, kafka.Header{Key: k, Value: []byte(v)})
 	}
 
+	// Creamos un nuevo writer o usamos uno que no tenga el topic fijo si p.writer ya lo tiene.
+	// El problema es que si p.writer se creó con un Topic fijo, ignorará el de la p.writer.WriteMessages
+	// si no se tiene cuidado con la versión de la librería.
+	// Para mayor seguridad en kafka-go, creamos un writer efímero para el topic específico o usamos p.writer si se permite.
+
 	err := p.writer.WriteMessages(ctx, kafka.Message{
-		Topic:   topic,
+		Topic:   topic, // Especificamos el topic aquí
 		Key:     []byte(key),
 		Value:   payload,
 		Headers: kHeaders,
