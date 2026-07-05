@@ -1,7 +1,4 @@
 # Entrega 2: Bloque Individual de Resiliencia
-**Curso**: Sistemas Distribuidos y Escalables  
-**Universidad**: Universidad de La Frontera (UFRO), 2026  
-**Integrante**: José (Microservicio: `order-service`)  
 
 ---
 
