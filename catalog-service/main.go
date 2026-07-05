@@ -13,6 +13,8 @@ import (
 	pb "github.com/mh0316/catalog/pb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 )
 
@@ -83,6 +85,11 @@ func main() {
 
 	srv := grpc.NewServer()
 	pb.RegisterCatalogServiceServer(srv, &server{repo: repo})
+
+	// Register health service
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(srv, healthServer)
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	log.Println("🚀 FoodRush Catalog Service (Go) escuchando en :50051")
 	if err := srv.Serve(lis); err != nil {

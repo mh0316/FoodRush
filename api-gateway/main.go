@@ -73,7 +73,7 @@ func mustNewGateway() *gateway {
 
 	usersConn := dialWithRetry(ctx, getEnv("USER_SERVICE_ADDR", "user-service:50051"))
 	catalogConn := dialWithRetry(ctx, getEnv("CATALOG_SERVICE_ADDR", "catalog-service:50051"))
-	ordersConn := dialWithRetry(ctx, getEnv("ORDERS_SERVICE_ADDR", "orders-service:50053"))
+	ordersConn := dialWithRetry(ctx, getEnv("ORDERS_SERVICE_ADDR", "orders-service:50051"))
 	paymentsConn := dialWithRetry(ctx, getEnv("PAYMENTS_SERVICE_ADDR", "payments-service:50051"))
 
 	return &gateway{

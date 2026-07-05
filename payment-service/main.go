@@ -17,6 +17,8 @@ import (
 
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 type server struct {
@@ -84,12 +86,17 @@ func main() {
 
 	orderCreatedTopic := os.Getenv("KAFKA_TOPIC_ORDER_CREATED")
 	if orderCreatedTopic == "" {
-		orderCreatedTopic = "foodrush.order.created"
+		orderCreatedTopic = "foodrush.orders.created"
 	}
 
 	paymentProcessedTopic := os.Getenv("KAFKA_TOPIC_PAYMENT_PROCESSED")
 	if paymentProcessedTopic == "" {
-		paymentProcessedTopic = "foodrush.payment.processed"
+		paymentProcessedTopic = "foodrush.payments.processed"
+	}
+
+	paymentFailedTopic := os.Getenv("KAFKA_TOPIC_PAYMENT_FAILED")
+	if paymentFailedTopic == "" {
+		paymentFailedTopic = "foodrush.payments.failed"
 	}
 
 	consumerGroup := os.Getenv("KAFKA_CONSUMER_GROUP")
@@ -97,7 +104,7 @@ func main() {
 		consumerGroup = "payments-service"
 	}
 
-	paymentProducer := paymentkafka.NewProducer(kafkaBroker, paymentProcessedTopic)
+	paymentProducer := paymentkafka.NewProducer(kafkaBroker, paymentProcessedTopic, paymentFailedTopic)
 	defer paymentProducer.Close()
 
 	paymentConsumer := paymentkafka.NewConsumer(
@@ -129,17 +136,26 @@ func main() {
 	srv := grpc.NewServer()
 	pb.RegisterPaymentsServiceServer(srv, &server{repo: repo})
 
+	// Register health service
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(srv, healthServer)
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+
 	log.Printf("servidor gRPC escuchando en :%s", port)
-	log.Printf("[payments-service] Kafka conectado broker=%s consume_topic=%s produce_topic=%s group=%s",
+	log.Printf("[payments-service] Kafka conectado broker=%s consume_topic=%s group=%s",
 		kafkaBroker,
 		orderCreatedTopic,
-		paymentProcessedTopic,
 		consumerGroup,
 	)
 
-	if err := srv.Serve(lis); err != nil {
-		log.Fatalf("error al servir: %v", err)
-	}
+	go func() {
+		if err := srv.Serve(lis); err != nil {
+			log.Fatalf("error al servir: %v", err)
+		}
+	}()
+
+	// Bloquea la ejecución para mantener el programa vivo
+	select {}
 }
 
 func openDBWithRetry() (*sql.DB, error) {

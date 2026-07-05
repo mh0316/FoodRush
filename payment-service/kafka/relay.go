@@ -40,32 +40,37 @@ func (r *OutboxRelay) Start(ctx context.Context) {
 }
 
 func (r *OutboxRelay) processOutbox(ctx context.Context) {
+	log.Println("[payment-service] Relay: Checking for unprocessed events...") // Log de diagnóstico
+
 	events, err := r.repo.GetUnprocessedEvents(ctx)
 	if err != nil {
 		log.Printf("[payment-service] Relay: failed to get unprocessed events: %v", err)
 		return
 	}
 
+	if len(events) > 0 {
+		log.Printf("[payment-service] Relay: Found %d unprocessed events", len(events))
+	}
+
 	for _, event := range events {
-		var headers map[string]string
-		if event.Headers != "" {
-			_ = json.Unmarshal([]byte(event.Headers), &headers)
+		log.Printf("[payment-service] Relay: processing event %s of type %s", event.ID, event.EventType)
+
+		var err error
+		switch event.EventType {
+		case "foodrush.payments.processed":
+			var processedEvent PaymentProcessedEvent
+			if err = json.Unmarshal([]byte(event.Payload), &processedEvent); err == nil {
+				err = r.producer.PublishPaymentProcessed(ctx, processedEvent)
+			}
+		case "foodrush.payments.failed":
+			var failedEvent PaymentFailedEvent
+			if err = json.Unmarshal([]byte(event.Payload), &failedEvent); err == nil {
+				err = r.producer.PublishPaymentFailed(ctx, failedEvent)
+			}
+		default:
+			log.Printf("[payment-service] Relay: unknown event type %s for event %s", event.EventType, event.ID)
+			continue
 		}
-
-		topic := event.EventType
-		if topic == "" {
-			topic = "foodrush.payment.processed"
-		}
-
-		log.Printf("[payment-service] Relay: attempting to publish event %s of type %s to topic %s", event.ID, event.EventType, topic)
-
-		err := r.producer.PublishGeneric(
-			ctx,
-			topic,
-			event.ID,
-			[]byte(event.Payload),
-			headers,
-		)
 
 		if err != nil {
 			log.Printf("[payment-service] Relay: failed to publish event %s: %v", event.ID, err)

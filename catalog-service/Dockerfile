@@ -1,20 +1,23 @@
 FROM golang:1.24-alpine AS builder
 
 RUN apk add --no-cache git
+
 WORKDIR /app
 
-# Copiamos archivos de dependencias
 COPY go.mod go.sum ./
+RUN go mod download
 
-# Copiamos el código
 COPY . .
+RUN go build -o /bin/catalog-service .
 
-# Compilamos
-RUN go build -o main .
-
-# Fase de ejecución
 FROM alpine:latest
-WORKDIR /root/
-COPY --from=builder /app/main .
-EXPOSE 50052
-CMD ["./main"]
+
+RUN apk add --no-cache ca-certificates
+
+WORKDIR /app
+
+COPY --from=builder /bin/catalog-service /usr/local/bin/catalog-service
+
+EXPOSE 50051
+
+CMD ["/usr/local/bin/catalog-service"]

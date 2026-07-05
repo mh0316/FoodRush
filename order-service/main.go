@@ -16,6 +16,8 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -51,49 +53,51 @@ func main() {
 		kafkaBroker = "kafka:9092"
 	}
 
-	// Topic donde orders-service publica order.created
 	orderCreatedTopic := os.Getenv("KAFKA_TOPIC_ORDER_CREATED")
 	if orderCreatedTopic == "" {
-		orderCreatedTopic = "foodrush.order.created"
+		orderCreatedTopic = "foodrush.orders.created"
 	}
 
-	// Topic donde orders-service consume payment.processed
 	paymentProcessedTopic := os.Getenv("KAFKA_TOPIC_PAYMENT_PROCESSED")
 	if paymentProcessedTopic == "" {
-		paymentProcessedTopic = "foodrush.payment.processed"
+		paymentProcessedTopic = "foodrush.payments.processed"
 	}
 
-	// Producer de orders-service
+	paymentFailedTopic := os.Getenv("KAFKA_TOPIC_PAYMENT_FAILED")
+	if paymentFailedTopic == "" {
+		paymentFailedTopic = "foodrush.payments.failed"
+	}
+
 	producer := orderkafka.NewProducer(kafkaBroker, orderCreatedTopic)
 	defer producer.Close()
 
-	// Consumer group para que orders-service escuche pagos procesados
-	paymentConsumerGroup := os.Getenv("KAFKA_PAYMENT_CONSUMER_GROUP")
+	paymentConsumerGroup := os.Getenv("KAFKA_CONSUMER_GROUP")
 	if paymentConsumerGroup == "" {
-		paymentConsumerGroup = "orders-service-payment-consumer"
+		paymentConsumerGroup = "orders-service-payments-consumer"
+	}
+
+	// Wrapper function to match the expected signature
+	updateStatusFunc := func(ctx context.Context, orderID string, status string) error {
+		return repo.UpdateOrderStatusByID(ctx, orderID, status)
 	}
 
 	paymentConsumer := orderkafka.NewPaymentConsumer(
 		kafkaBroker,
-		paymentProcessedTopic,
+		[]string{paymentProcessedTopic, paymentFailedTopic},
 		paymentConsumerGroup,
-		repo.UpdateOrderStatusByID,
+		updateStatusFunc,
 	)
 	defer paymentConsumer.Close()
 
 	go paymentConsumer.Start(context.Background())
 
-	// Start Outbox Relay
-	relayInterval := 5 * time.Second
-	relay := orderkafka.NewOutboxRelay(repo, producer, relayInterval)
+	relay := orderkafka.NewOutboxRelay(repo, producer, 5*time.Second)
 	go relay.Start(context.Background())
 
 	log.Printf(
-		"[orders-service] Kafka conectado broker=%s produce_topic=%s consume_topic=%s group=%s",
+		"[orders-service] Kafka conectado broker=%s produce_topic=%s",
 		kafkaBroker,
 		orderCreatedTopic,
-		paymentProcessedTopic,
-		paymentConsumerGroup,
 	)
 
 	// Start gRPC server
@@ -116,9 +120,12 @@ func main() {
 	)
 
 	pb.RegisterOrderServiceServer(s, orderServer)
-
-	// Register reflection service on gRPC server to allow grpcurl to work
 	reflection.Register(s)
+
+	// Register health service
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(s, healthServer)
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	log.Printf("Orders Service listening on %v", lis.Addr())
 

@@ -10,7 +10,7 @@ services:
       - user-database-data:/var/lib/postgresql/data
       - ./user-service/db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${USER_DB_USER} -d $${USER_DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -20,7 +20,6 @@ services:
     build:
       context: ./user-service
       dockerfile: Dockerfile
-    image: foodrush-user-service:local
     restart: unless-stopped
     environment:
       DB_HOST: user-database
@@ -45,24 +44,55 @@ services:
       - catalog-database-data:/var/lib/postgresql/data
       - ./catalog-service/init-db/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${CATALOG_DB_USER} -d $${CATALOG_DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   catalog-service:
-    build: ./catalog-service
+    build:
+      context: ./catalog-service
+      dockerfile: Dockerfile
     restart: on-failure
+    environment:
+      DB_URL: user=${CATALOG_DB_USER} password=${CATALOG_DB_PASSWORD} host=catalog-database port=${CATALOG_DB_PORT} dbname=${CATALOG_DB_NAME} sslmode=${CATALOG_DB_SSLMODE}
+      GRPC_PORT: ${CATALOG_SERVICE_GRPC_PORT}
     depends_on:
       catalog-database:
         condition: service_healthy
-    environment:
-      DB_URL: user=${CATALOG_DB_USER} password=${CATALOG_DB_PASSWORD} host=catalog-database port=${CATALOG_DB_PORT} dbname=${CATALOG_DB_NAME} sslmode=${CATALOG_DB_SSLMODE}
 
   orders-database:
     image: mongo:latest
+    command: ["--replSet", "rs0", "--bind_ip_all"]
     volumes:
       - orders-database-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  mongo-init:
+    image: mongo:latest
+    restart: "no"
+    command: >
+      bash -c "
+        sleep 5;
+        mongosh --host orders-database:27017 --eval '
+          try {
+            rs.status();
+            print(\"Replica set already exists\");
+          } catch (e) {
+            print(\"Initiating replica set...\");
+            rs.initiate({ _id: \"rs0\", members: [{ _id: 0, host: \"orders-database:27017\" }] });
+            print(\"Replica set initiated.\");
+          }
+        '
+      "
+    depends_on:
+      orders-database:
+        condition: service_healthy
 
   kafka:
     image: apache/kafka:latest
@@ -87,18 +117,20 @@ services:
       context: ./order-service
       dockerfile: Dockerfile
     environment:
-      - MONGO_URI=mongodb://orders-database:${ORDERS_DB_PORT}
+      - MONGO_URI=mongodb://orders-database:27017/?replicaSet=rs0
+      - ORDERS_DB_PORT=27017
       - PORT=${ORDERS_SERVICE_GRPC_PORT}
       - CATALOG_SERVICE_ADDR=${CATALOG_SERVICE_ADDR}
-
-      # Kafka
       - KAFKA_BROKERS=kafka:9092
-      - KAFKA_TOPIC_ORDER_CREATED=foodrush.order.created
-      - KAFKA_TOPIC_PAYMENT_PROCESSED=foodrush.payment.processed
+      - KAFKA_TOPIC_ORDER_CREATED=foodrush.orders.created
+      - KAFKA_TOPIC_PAYMENT_PROCESSED=foodrush.payments.processed
+      - KAFKA_TOPIC_PAYMENT_FAILED=foodrush.payments.failed
       - KAFKA_CONSUMER_GROUP=orders-service-payments-consumer
     depends_on:
-      - orders-database
-      - kafka
+      mongo-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_started
 
   payment-database:
     image: postgres:16
@@ -110,7 +142,7 @@ services:
       - payment-database-data:/var/lib/postgresql/data
       - ./payment-service/db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${PAYMENT_DB_USER} -d $${PAYMENT_DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -127,12 +159,17 @@ services:
       DB_PASSWORD: ${PAYMENT_DB_PASSWORD}
       DB_NAME: ${PAYMENT_DB_NAME}
       PORT: ${PAYMENTS_SERVICE_GRPC_PORT}
-
-      # Kafka
       KAFKA_BROKERS: kafka:9092
-      KAFKA_TOPIC_ORDER_CREATED: foodrush.order.created
-      KAFKA_TOPIC_PAYMENT_PROCESSED: foodrush.payment.processed
+      KAFKA_TOPIC_ORDER_CREATED: foodrush.orders.created
+      KAFKA_TOPIC_PAYMENT_PROCESSED: foodrush.payments.processed
+      KAFKA_TOPIC_PAYMENT_FAILED: foodrush.payments.failed
       KAFKA_CONSUMER_GROUP: payments-service
+    # healthcheck:
+    #   test: ["CMD", "grpc-health-probe", "-addr=:${PAYMENTS_SERVICE_GRPC_PORT}"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+    #   start_period: 10s
     depends_on:
       payment-database:
         condition: service_healthy
@@ -152,10 +189,14 @@ services:
       ORDERS_SERVICE_ADDR: ${ORDERS_SERVICE_ADDR}
       PAYMENTS_SERVICE_ADDR: ${PAYMENTS_SERVICE_ADDR}
     depends_on:
-      - user-service
-      - catalog-service
-      - orders-service
-      - payments-service
+      user-service:
+        condition: service_started
+      catalog-service:
+        condition: service_started
+      orders-service:
+        condition: service_started
+      payments-service:
+        condition: service_started
 
 volumes:
   user-database-data:

@@ -57,10 +57,10 @@ func (r *OutboxRelay) processOutbox(ctx context.Context) {
 			}
 
 			// Determinamos el topic. Si event.EventType ya es un topic válido, lo usamos.
-			// Según docker-compose y main.go, el topic es foodrush.order.created
+			// Según docker-compose y main.go, el topic es foodrush.orders.created
 			topic := event.EventType
 			if topic == "" {
-				topic = "foodrush.order.created"
+				topic = "foodrush.orders.created"
 			}
 
 			log.Printf("[orders-service] Relay: attempting to publish event %s of type %s for order %s to topic %s", event.Id, event.EventType, order.Id, topic)

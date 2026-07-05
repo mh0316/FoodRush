@@ -90,7 +90,7 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 	eventPayload, _ := json.Marshal(map[string]interface{}{
 		"event_id":       uuid.New().String(),
 		"correlation_id": correlationID,
-		"event_type":     "foodrush.order.created",
+		"event_type":     "foodrush.orders.created",
 		"source":         "orders-service",
 		"order_id":       order.Id,
 		"user_id":        order.UserId,
@@ -102,7 +102,7 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 
 	outboxEvent := &pb.OutboxEvent{
 		Id:        uuid.New().String(),
-		EventType: "foodrush.order.created",
+		EventType: "foodrush.orders.created",
 		Payload:   string(eventPayload),
 		Headers: map[string]string{
 			"correlation_id": correlationID,
