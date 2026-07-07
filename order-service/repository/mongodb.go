@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/foodrush/observability"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -37,13 +38,19 @@ func NewMongoDB(uri, dbName, collName string) (*MongoDB, error) {
 }
 
 func (db *MongoDB) CreateOrder(ctx context.Context, order *pb.Order) error {
-	_, err := db.collection.InsertOne(ctx, order)
+	dbCtx, span := observability.StartDBSpan(ctx, "mongodb", "insertOne orders")
+	defer span.End()
+
+	_, err := db.collection.InsertOne(dbCtx, order)
 	return err
 }
 
 func (db *MongoDB) GetOrder(ctx context.Context, id string) (*pb.Order, error) {
+	dbCtx, span := observability.StartDBSpan(ctx, "mongodb", "findOne orders")
+	defer span.End()
+
 	var order pb.Order
-	err := db.collection.FindOne(ctx, bson.M{"id": id}).Decode(&order)
+	err := db.collection.FindOne(dbCtx, bson.M{"id": id}).Decode(&order)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, ErrNotFound
@@ -54,11 +61,14 @@ func (db *MongoDB) GetOrder(ctx context.Context, id string) (*pb.Order, error) {
 }
 
 func (db *MongoDB) UpdateOrderStatus(ctx context.Context, qrRetiro string, status string) (*pb.Order, error) {
+	dbCtx, span := observability.StartDBSpan(ctx, "mongodb", "findOneAndUpdate orders")
+	defer span.End()
+
 	filter := bson.M{"qr_retiro": qrRetiro}
 	update := bson.M{"$set": bson.M{"status": status}}
 
 	var updatedOrder pb.Order
-	err := db.collection.FindOneAndUpdate(ctx, filter, update, options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&updatedOrder)
+	err := db.collection.FindOneAndUpdate(dbCtx, filter, update, options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&updatedOrder)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, ErrNotFound

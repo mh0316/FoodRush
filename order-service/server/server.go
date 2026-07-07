@@ -3,11 +3,11 @@ package server
 import (
 	"context"
 	"errors"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/foodrush/observability"
 	catalogpb "foodrush/orders/catalogpb"
 	pb "foodrush/orders/proto"
 	"foodrush/orders/repository"
@@ -26,7 +26,8 @@ func NewOrderServer(repo repository.OrderStore, catalog catalogpb.CatalogService
 }
 
 func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderRequest) (*pb.CreateOrderResponse, error) {
-	log.Printf("CreateOrder request: user_id=%s, comercio_id=%s", req.UserId, req.ComercioId)
+	logger := observability.CtxLogger(ctx)
+	logger.Info().Str("user_id", req.UserId).Str("comercio_id", req.ComercioId).Msg("CreateOrder")
 
 	if req.UserId == "" || req.ComercioId == "" || len(req.Items) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "missing required fields")
@@ -49,9 +50,9 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 		total += float64(item.Cantidad) * product.Precio
 	}
 
-	orderId := uuid.New().String()
-	qrRetiro := "QR_" + uuid.New().String()
-	
+	orderId := uuid.NewString()
+	qrRetiro := "QR_" + uuid.NewString()
+
 	order := &pb.Order{
 		Id:             orderId,
 		UserId:         req.UserId,
@@ -65,10 +66,11 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 
 	err := s.repo.CreateOrder(ctx, order)
 	if err != nil {
-		log.Printf("Failed to insert order: %v", err)
+		logger.Error().Err(err).Msg("Failed to insert order")
 		return nil, status.Errorf(codes.Internal, "failed to create order")
 	}
 
+	logger.Info().Str("order_id", order.Id).Float64("total", order.Total).Msg("order created")
 	return &pb.CreateOrderResponse{
 		Id:     order.Id,
 		Total:  order.Total,
@@ -77,16 +79,18 @@ func (s *OrderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderReques
 }
 
 func (s *OrderServer) getProduct(ctx context.Context, productID string) (*catalogpb.Product, error) {
+	logger := observability.CtxLogger(ctx)
+
 	var lastErr error
-	for i := 1; i <= 3; i++ {
-		lookupCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	for i := 1; i <= 2; i++ {
+		lookupCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 		product, err := s.catalog.GetProductDetails(lookupCtx, &catalogpb.GetProductDetailsRequest{Id: productID})
 		cancel()
 		if err == nil {
 			return product, nil
 		}
 		lastErr = err
-		log.Printf("catalog lookup retry %d/3 for product %s: %v", i, productID, err)
+		logger.Warn().Int("attempt", i).Str("product_id", productID).Err(err).Msg("catalog lookup retry")
 		time.Sleep(250 * time.Millisecond)
 	}
 
@@ -94,7 +98,8 @@ func (s *OrderServer) getProduct(ctx context.Context, productID string) (*catalo
 }
 
 func (s *OrderServer) GetOrderDetails(ctx context.Context, req *pb.GetOrderDetailsRequest) (*pb.Order, error) {
-	log.Printf("GetOrderDetails request: id=%s", req.Id)
+	logger := observability.CtxLogger(ctx)
+	logger.Info().Str("id", req.Id).Msg("GetOrderDetails")
 
 	order, err := s.repo.GetOrder(ctx, req.Id)
 	if err != nil {
@@ -108,7 +113,8 @@ func (s *OrderServer) GetOrderDetails(ctx context.Context, req *pb.GetOrderDetai
 }
 
 func (s *OrderServer) ConfirmOrderPickup(ctx context.Context, req *pb.ConfirmOrderPickupRequest) (*pb.ConfirmOrderPickupResponse, error) {
-	log.Printf("ConfirmOrderPickup request: qr_retiro=%s", req.QrRetiro)
+	logger := observability.CtxLogger(ctx)
+	logger.Info().Str("qr_retiro", req.QrRetiro).Msg("ConfirmOrderPickup")
 
 	order, err := s.repo.UpdateOrderStatus(ctx, req.QrRetiro, "DELIVERED")
 	if err != nil {

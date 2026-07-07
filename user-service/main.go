@@ -4,15 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"math/rand"
 	"time"
 
+	"github.com/foodrush/observability"
 	pb "github.com/jesus-acev/user-service/pb"
 	"github.com/jesus-acev/user-service/internal/repository"
 	_ "github.com/lib/pq"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -24,35 +25,53 @@ type server struct {
 }
 
 func (s *server) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.CreateUserResponse, error) {
+	logger := observability.CtxLogger(ctx)
+
 	if req.Nombre == "" || req.Correo == "" || req.Password == "" || req.PaymentToken == "" {
 		return nil, status.Error(codes.InvalidArgument, "nombre, correo, password y payment_token son obligatorios")
 	}
 
-	id, err := s.repo.Create(req)
+	id, err := s.repo.Create(ctx, req)
 	if err != nil {
 		if repository.IsAlreadyExists(err) {
 			return nil, status.Error(codes.AlreadyExists, "correo ya registrado")
 		}
+		logger.Error().Err(err).Msg("error creando usuario")
 		return nil, status.Errorf(codes.Internal, "no se pudo crear usuario: %v", err)
 	}
 
+	logger.Info().Str("user_id", id).Msg("usuario creado")
 	return &pb.CreateUserResponse{User: &pb.User{Id: id, Nombre: req.Nombre, Correo: req.Correo, PaymentToken: req.PaymentToken, Status: "created"}}, nil
 }
 
 func (s *server) GetUserProfile(ctx context.Context, req *pb.GetUserProfileRequest) (*pb.GetUserProfileResponse, error) {
+	logger := observability.CtxLogger(ctx)
+
 	if req.Id == "" {
 		return nil, status.Error(codes.InvalidArgument, "id es obligatorio")
 	}
 
-	user, err := s.repo.GetByID(req.Id)
+	// Error path: simula base de datos caída para evidenciar alertas y trazas de error.
+	if req.Id == "error" {
+		err := fmt.Errorf("simulacion db caida: conexion rechazada")
+		if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+			span.RecordError(err)
+		}
+		logger.Error().Err(err).Msg("db caída simulada")
+		return nil, status.Error(codes.Internal, "db caída simulada")
+	}
+
+	user, err := s.repo.GetByID(ctx, req.Id)
 	if repository.IsNotFound(err) {
 		return nil, status.Error(codes.NotFound, "usuario no encontrado")
 	}
 	if err != nil {
+		logger.Error().Err(err).Str("user_id", req.Id).Msg("error obteniendo perfil")
 		return nil, status.Errorf(codes.Internal, "no se pudo obtener perfil: %v", err)
 	}
 
 	user.Status = "active"
+	logger.Info().Str("user_id", req.Id).Msg("perfil obtenido")
 	return &pb.GetUserProfileResponse{User: user}, nil
 }
 
@@ -86,31 +105,45 @@ func openDBWithRetry() (*sql.DB, error) {
 		if err == nil {
 			return db, nil
 		}
-		log.Printf("⏳ [%d/5] Esperando a que la DB esté lista...", i)
+		observability.Logger().Warn().Int("attempt", i).Err(err).Msg("esperando DB")
 		time.Sleep(2*time.Second + time.Duration(rand.Intn(300))*time.Millisecond)
 	}
 	return nil, err
 }
 
 func main() {
+	_, shutdown, err := observability.InitTracer("user-service")
+	if err != nil {
+		observability.Logger().Fatal().Err(err).Msg("inicializar tracer")
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdown(ctx)
+	}()
+
 	db, err := openDBWithRetry()
 	if err != nil {
-		log.Fatalf("no se pudo conectar a PostgreSQL: %v", err)
+		observability.Logger().Fatal().Err(err).Msg("no se pudo conectar a PostgreSQL")
 	}
 	defer db.Close()
 
 	repo := repository.NewUserRepository(db)
+
+	// Servidor de métricas Prometheus en puerto independiente.
+	observability.StartMetricsServer(getEnv("METRICS_PORT", ":9000"))
+
 	grpcPort := getEnv("GRPC_PORT", "50051")
 	lis, err := net.Listen("tcp", ":"+grpcPort)
 	if err != nil {
-		log.Fatalf("no se pudo escuchar: %v", err)
+		observability.Logger().Fatal().Err(err).Msg("no se pudo escuchar")
 	}
 
-	srv := grpc.NewServer()
+	srv := grpc.NewServer(observability.GRPCServerOptions()...)
 	pb.RegisterUsersServiceServer(srv, &server{repo: repo})
 
-	log.Printf("servidor gRPC escuchando en :%s", grpcPort)
+	observability.Logger().Info().Str("port", grpcPort).Msg("servidor gRPC escuchando")
 	if err := srv.Serve(lis); err != nil {
-		log.Fatalf("error al servir: %v", err)
+		observability.Logger().Fatal().Err(err).Msg("error al servir")
 	}
 }

@@ -18,11 +18,14 @@ services:
 
   user-service:
     build:
-      context: ./user-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: user-service/Dockerfile
     image: foodrush-user-service:local
     restart: unless-stopped
+    labels:
+      - com.foodrush.service=user-service
     environment:
+      SERVICE_NAME: user-service
       DB_HOST: user-database
       DB_PORT: ${USER_DB_PORT}
       DB_USER: ${USER_DB_USER}
@@ -30,6 +33,9 @@ services:
       DB_NAME: ${USER_DB_NAME}
       DB_SSLMODE: ${USER_DB_SSLMODE}
       GRPC_PORT: ${USER_SERVICE_GRPC_PORT}
+      METRICS_PORT: ${USER_METRICS_PORT:-:9000}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
     depends_on:
       user-database:
         condition: service_healthy
@@ -43,7 +49,7 @@ services:
       POSTGRES_DB: ${CATALOG_DB_NAME}
     volumes:
       - catalog-database-data:/var/lib/postgresql/data
-      - ./catalog-service/init-db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./catalog-service/init-db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${CATALOG_DB_USER} -d ${CATALOG_DB_NAME}"]
       interval: 5s
@@ -51,13 +57,22 @@ services:
       retries: 5
 
   catalog-service:
-    build: ./catalog-service
+    build:
+      context: .
+      dockerfile: catalog-service/Dockerfile
     restart: on-failure
+    labels:
+      - com.foodrush.service=catalog-service
     depends_on:
       catalog-database:
         condition: service_healthy
     environment:
+      SERVICE_NAME: catalog-service
       DB_URL: user=${CATALOG_DB_USER} password=${CATALOG_DB_PASSWORD} host=catalog-database port=${CATALOG_DB_PORT} dbname=${CATALOG_DB_NAME} sslmode=${CATALOG_DB_SSLMODE}
+      GRPC_PORT: ${CATALOG_SERVICE_GRPC_PORT}
+      METRICS_PORT: ${CATALOG_METRICS_PORT:-:9000}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
 
   orders-database:
     image: mongo:latest
@@ -66,12 +81,18 @@ services:
 
   orders-service:
     build:
-      context: ./order-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: order-service/Dockerfile
+    labels:
+      - com.foodrush.service=orders-service
     environment:
-      - MONGO_URI=mongodb://orders-database:${ORDERS_DB_PORT}
-      - PORT=${ORDERS_SERVICE_GRPC_PORT}
-      - CATALOG_SERVICE_ADDR=${CATALOG_SERVICE_ADDR}
+      SERVICE_NAME: orders-service
+      MONGO_URI: mongodb://orders-database:${ORDERS_DB_PORT}
+      PORT: ${ORDERS_SERVICE_GRPC_PORT}
+      CATALOG_SERVICE_ADDR: ${CATALOG_SERVICE_ADDR}
+      METRICS_PORT: ${ORDERS_METRICS_PORT:-:9000}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
     depends_on:
       - orders-database
 
@@ -92,16 +113,22 @@ services:
 
   payments-service:
     build:
-      context: ./payment-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: payment-service/Dockerfile
     restart: unless-stopped
+    labels:
+      - com.foodrush.service=payments-service
     environment:
+      SERVICE_NAME: payments-service
       DB_HOST: ${PAYMENT_DB_HOST}
       DB_PORT: ${PAYMENT_DB_PORT}
       DB_USER: ${PAYMENT_DB_USER}
       DB_PASSWORD: ${PAYMENT_DB_PASSWORD}
       DB_NAME: ${PAYMENT_DB_NAME}
       PORT: ${PAYMENTS_SERVICE_GRPC_PORT}
+      METRICS_PORT: ${PAYMENTS_METRICS_PORT:-:9000}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
     depends_on:
       payment-database:
         condition: service_healthy
@@ -112,20 +139,84 @@ services:
       dockerfile: api-gateway/Dockerfile
     ports:
       - "${API_GATEWAY_PORT}:8080"
+    labels:
+      - com.foodrush.service=api-gateway
     environment:
+      SERVICE_NAME: api-gateway
       API_GATEWAY_PORT: 8080
       USER_SERVICE_ADDR: ${USER_SERVICE_ADDR}
       CATALOG_SERVICE_ADDR: ${CATALOG_SERVICE_ADDR}
       ORDERS_SERVICE_ADDR: ${ORDERS_SERVICE_ADDR}
       PAYMENTS_SERVICE_ADDR: ${PAYMENTS_SERVICE_ADDR}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
     depends_on:
       - user-service
       - catalog-service
       - orders-service
       - payments-service
 
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+      - jaeger
+
+  loki:
+    image: grafana/loki:3.0.0
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+
+  alloy:
+    image: grafana/alloy:v1.1.0
+    volumes:
+      - ./observability/alloy-config.alloy:/etc/alloy/config.alloy:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+    depends_on:
+      - loki
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.56
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    volumes:
+      - jaeger-data:/badger
+
 volumes:
   user-database-data:
   catalog-database-data:
   orders-database-data:
   payment-database-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  jaeger-data:

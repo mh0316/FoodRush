@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/foodrush/observability"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	paymentpb "github.com/gonzalo-fch/PaymentsService/pb"
 	userpb "github.com/jesus-acev/user-service/pb"
 	catalogpb "github.com/mh0316/catalog/pb"
@@ -44,10 +45,23 @@ type statusResponse struct {
 }
 
 func main() {
+	logger := observability.Logger()
+
+	_, shutdown, err := observability.InitTracer("api-gateway")
+	if err != nil {
+		logger.Fatal().Err(err).Msg("inicializar tracer")
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdown(ctx)
+	}()
+
 	gw := mustNewGateway()
 	defer gw.close()
 
 	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", promhttp.Handler())
 	mux.HandleFunc("GET /", gw.root)
 	mux.HandleFunc("GET /healthz", gw.health)
 	mux.HandleFunc("POST /users", gw.createUser)
@@ -61,10 +75,15 @@ func main() {
 	mux.HandleFunc("POST /payments/process", gw.processPayment)
 	mux.HandleFunc("GET /payments/order/{order_id}", gw.getPaymentByOrder)
 
+	var handler http.Handler = mux
+	handler = observability.TraceHTTPHandler(handler, "api-gateway")
+	handler = observability.HTTPMetricsMiddleware(handler)
+	handler = withJSONHeaders(handler)
+
 	port := getEnv("API_GATEWAY_PORT", "8080")
-	log.Printf("API Gateway listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, withJSONHeaders(mux)); err != nil {
-		log.Fatalf("gateway stopped: %v", err)
+	logger.Info().Str("port", port).Msg("API Gateway escuchando")
+	if err := http.ListenAndServe(":"+port, handler); err != nil {
+		logger.Fatal().Err(err).Msg("gateway detenido")
 	}
 }
 
@@ -98,7 +117,7 @@ func (g *gateway) close() {
 func (g *gateway) root(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service": "api-gateway",
-		"status": "ok",
+		"status":  "ok",
 		"routes": []string{
 			"GET /healthz",
 			"POST /users",
@@ -120,13 +139,16 @@ func (g *gateway) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *gateway) createUser(w http.ResponseWriter, r *http.Request) {
+	logger := observability.CtxLogger(r.Context())
+
 	var req userpb.CreateUserRequest
 	if err := decodeProtoBody(r, &req); err != nil {
+		logger.Warn().Err(err).Msg("bad request createUser")
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	resp, err := g.users.CreateUser(ctx, &req)
@@ -135,17 +157,20 @@ func (g *gateway) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Info().Str("user_id", resp.User.Id).Msg("usuario creado")
 	writeProtoJSON(w, http.StatusCreated, resp)
 }
 
 func (g *gateway) getUserProfile(w http.ResponseWriter, r *http.Request) {
+	logger := observability.CtxLogger(r.Context())
+
 	id := r.PathValue("id")
 	if id == "" {
 		writeError(w, http.StatusBadRequest, "id es obligatorio")
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	resp, err := g.users.GetUserProfile(ctx, &userpb.GetUserProfileRequest{Id: id})
@@ -154,6 +179,7 @@ func (g *gateway) getUserProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Info().Str("user_id", id).Msg("perfil obtenido")
 	writeProtoJSON(w, http.StatusOK, resp)
 }
 
@@ -168,7 +194,7 @@ func (g *gateway) listComercios(w http.ResponseWriter, r *http.Request) {
 		soloActivos = value
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	resp, err := g.catalog.ListComercios(ctx, &catalogpb.ListComerciosRequest{SoloActivos: soloActivos})
@@ -187,7 +213,7 @@ func (g *gateway) getMenuByComercio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	resp, err := g.catalog.GetMenuByComercio(ctx, &catalogpb.GetMenuByComercioRequest{ComercioId: id})
@@ -206,7 +232,7 @@ func (g *gateway) getProductDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	resp, err := g.catalog.GetProductDetails(ctx, &catalogpb.GetProductDetailsRequest{Id: id})
@@ -219,13 +245,16 @@ func (g *gateway) getProductDetails(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *gateway) createOrder(w http.ResponseWriter, r *http.Request) {
+	logger := observability.CtxLogger(r.Context())
+
 	var req orderpb.CreateOrderRequest
 	if err := decodeProtoBody(r, &req); err != nil {
+		logger.Warn().Err(err).Msg("bad request createOrder")
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	resp, err := g.orders.CreateOrder(ctx, &req)
@@ -234,6 +263,7 @@ func (g *gateway) createOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Info().Str("order_id", resp.Id).Float64("total", resp.Total).Msg("orden creada")
 	writeProtoJSON(w, http.StatusCreated, resp)
 }
 
@@ -244,7 +274,7 @@ func (g *gateway) getOrderDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	resp, err := g.orders.GetOrderDetails(ctx, &orderpb.GetOrderDetailsRequest{Id: id})
@@ -263,7 +293,7 @@ func (g *gateway) confirmOrderPickup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	resp, err := g.orders.ConfirmOrderPickup(ctx, &req)
@@ -276,13 +306,16 @@ func (g *gateway) confirmOrderPickup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *gateway) processPayment(w http.ResponseWriter, r *http.Request) {
+	logger := observability.CtxLogger(r.Context())
+
 	var req paymentpb.ProcessPaymentRequest
 	if err := decodeProtoBody(r, &req); err != nil {
+		logger.Warn().Err(err).Msg("bad request processPayment")
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	resp, err := g.payments.ProcessPayment(ctx, &req)
@@ -291,6 +324,7 @@ func (g *gateway) processPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logger.Info().Str("payment_id", resp.Id).Str("status", resp.Status.String()).Msg("pago procesado")
 	writeProtoJSON(w, http.StatusCreated, resp)
 }
 
@@ -301,7 +335,7 @@ func (g *gateway) getPaymentByOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
 	resp, err := g.payments.GetPaymentByOrder(ctx, &paymentpb.GetPaymentByOrderRequest{OrderId: orderID})
@@ -314,6 +348,7 @@ func (g *gateway) getPaymentByOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 func dialWithRetry(ctx context.Context, addr string) *grpc.ClientConn {
+	logger := observability.Logger()
 	for i := 1; i <= 10; i++ {
 		dialCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		conn, err := grpc.DialContext(
@@ -321,17 +356,18 @@ func dialWithRetry(ctx context.Context, addr string) *grpc.ClientConn {
 			addr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithBlock(),
+			observability.GRPCClientStatsHandler(),
 		)
 		cancel()
 		if err == nil {
 			return conn
 		}
 
-		log.Printf("esperando servicio %s (%d/10): %v", addr, i, err)
+		logger.Warn().Str("addr", addr).Int("attempt", i).Err(err).Msg("esperando servicio")
 		time.Sleep(2 * time.Second)
 	}
 
-	log.Fatalf("no se pudo conectar a %s", addr)
+	logger.Fatal().Str("addr", addr).Msg("no se pudo conectar")
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/foodrush/observability"
 	pb "github.com/mh0316/catalog/pb"
 )
 
@@ -25,7 +26,10 @@ func (r *CatalogRepository) ListComercios(ctx context.Context, soloActivos bool)
 		query += " WHERE activo = true"
 	}
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	dbCtx, span := observability.StartDBSpan(ctx, "postgres", query)
+	defer span.End()
+
+	rows, err := r.db.QueryContext(dbCtx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +52,12 @@ func (r *CatalogRepository) ListComercios(ctx context.Context, soloActivos bool)
 }
 
 func (r *CatalogRepository) GetMenuByComercio(ctx context.Context, comercioID string) ([]*pb.Product, error) {
-	rows, err := r.db.QueryContext(ctx, "SELECT id, nombre, precio, comercio_id, disponible FROM productos WHERE comercio_id = $1", comercioID)
+	const query = "SELECT id, nombre, precio, comercio_id, disponible FROM productos WHERE comercio_id = $1"
+
+	dbCtx, span := observability.StartDBSpan(ctx, "postgres", query)
+	defer span.End()
+
+	rows, err := r.db.QueryContext(dbCtx, query, comercioID)
 	if err != nil {
 		return nil, err
 	}
@@ -71,8 +80,13 @@ func (r *CatalogRepository) GetMenuByComercio(ctx context.Context, comercioID st
 }
 
 func (r *CatalogRepository) GetProductDetails(ctx context.Context, id string) (*pb.Product, error) {
+	const query = "SELECT id, nombre, precio, comercio_id, disponible FROM productos WHERE id = $1"
+
+	dbCtx, span := observability.StartDBSpan(ctx, "postgres", query)
+	defer span.End()
+
 	p := &pb.Product{}
-	err := r.db.QueryRowContext(ctx, "SELECT id, nombre, precio, comercio_id, disponible FROM productos WHERE id = $1", id).
+	err := r.db.QueryRowContext(dbCtx, query, id).
 		Scan(&p.Id, &p.Nombre, &p.Precio, &p.ComercioId, &p.Disponible)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound

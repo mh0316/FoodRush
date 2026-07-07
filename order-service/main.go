@@ -1,12 +1,13 @@
 package main
 
 import (
-	"log"
+	"context"
 	"net"
 	"os"
 	"math/rand"
 	"time"
 
+	"github.com/foodrush/observability"
 	catalogpb "foodrush/orders/catalogpb"
 	pb "foodrush/orders/proto"
 	"foodrush/orders/repository"
@@ -17,6 +18,16 @@ import (
 )
 
 func main() {
+	_, shutdown, err := observability.InitTracer("orders-service")
+	if err != nil {
+		observability.Logger().Fatal().Err(err).Msg("inicializar tracer")
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdown(ctx)
+	}()
+
 	mongoURI := os.Getenv("MONGO_URI")
 	if mongoURI == "" {
 		mongoURI = "mongodb://localhost:27017"
@@ -24,41 +35,43 @@ func main() {
 
 	repo, err := connectMongoWithRetry(mongoURI)
 	if err != nil {
-		log.Fatalf("failed to connect to MongoDB: %v", err)
+		observability.Logger().Fatal().Err(err).Msg("failed to connect to MongoDB")
 	}
-	log.Println("Connected to MongoDB")
+	observability.Logger().Info().Msg("Connected to MongoDB")
 
 	catalogAddr := os.Getenv("CATALOG_SERVICE_ADDR")
 	if catalogAddr == "" {
 		catalogAddr = "catalog-service:50051"
 	}
-	catalogConn, err := grpc.Dial(catalogAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	catalogConn, err := grpc.Dial(
+		catalogAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		observability.GRPCClientStatsHandler(),
+	)
 	if err != nil {
-		log.Fatalf("failed to create catalog client: %v", err)
+		observability.Logger().Fatal().Err(err).Msg("failed to create catalog client")
 	}
 	defer catalogConn.Close()
 
-	// Start gRPC server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "50051"
-	}
+	// Servidor de métricas Prometheus en puerto independiente.
+	observability.StartMetricsServer(getEnv("METRICS_PORT", ":9000"))
 
+	port := getEnv("PORT", "50051")
 	lis, err := net.Listen("tcp", ":"+port)
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		observability.Logger().Fatal().Err(err).Msg("failed to listen")
 	}
 
-	s := grpc.NewServer()
+	s := grpc.NewServer(observability.GRPCServerOptions()...)
 	orderServer := server.NewOrderServer(repo, catalogpb.NewCatalogServiceClient(catalogConn))
 	pb.RegisterOrderServiceServer(s, orderServer)
-	
+
 	// Register reflection service on gRPC server to allow grpcurl to work
 	reflection.Register(s)
 
-	log.Printf("Orders Service listening on %v", lis.Addr())
+	observability.Logger().Info().Str("port", port).Msg("Orders Service listening")
 	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		observability.Logger().Fatal().Err(err).Msg("failed to serve")
 	}
 }
 
@@ -71,8 +84,15 @@ func connectMongoWithRetry(uri string) (*repository.MongoDB, error) {
 		if err == nil {
 			return repo, nil
 		}
-		log.Printf("waiting for MongoDB (%d/5): %v", i, err)
+		observability.Logger().Warn().Int("attempt", i).Err(err).Msg("waiting for MongoDB")
 		time.Sleep(2*time.Second + time.Duration(rand.Intn(300))*time.Millisecond)
 	}
 	return nil, err
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
