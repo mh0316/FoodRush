@@ -1,0 +1,34 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "api-gateway"
+    static_configs:
+      - targets: ["api-gateway:8080"]
+        labels:
+          com_foodrush_service: "api-gateway"
+
+  - job_name: "user-service"
+    static_configs:
+      - targets: ["user-service:9000"]
+        labels:
+          com_foodrush_service: "user-service"
+
+  - job_name: "catalog-service"
+    static_configs:
+      - targets: ["catalog-service:9000"]
+        labels:
+          com_foodrush_service: "catalog-service"
+
+  - job_name: "orders-service"
+    static_configs:
+      - targets: ["orders-service:9000"]
+        labels:
+          com_foodrush_service: "orders-service"
+
+  - job_name: "payments-service"
+    static_configs:
+      - targets: ["payments-service:9000"]
+        labels:
+          com_foodrush_service: "payments-service"
