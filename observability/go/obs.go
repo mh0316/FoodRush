@@ -91,7 +91,7 @@ func CtxLogger(ctx context.Context) *zerolog.Logger {
 
 // InitTracer inicializa el TracerProvider OTLP para enviar trazas a Jaeger.
 // El endpoint se lee de OTEL_EXPORTER_OTLP_ENDPOINT (default http://jaeger:4318).
-// La tasa de muestreo se controla con OTEL_TRACES_SAMPLER_ARG (default 0.1).
+// La tasa de muestreo se controla con OTEL_TRACES_SAMPLER_ARG (default 1.0).
 func InitTracer(serviceName string) (*sdktrace.TracerProvider, func(context.Context) error, error) {
 	ctx := context.Background()
 
@@ -111,7 +111,7 @@ func InitTracer(serviceName string) (*sdktrace.TracerProvider, func(context.Cont
 		semconv.ServiceNameKey.String(serviceName),
 	)
 
-	ratio := 0.1
+	ratio := 1.0
 	if r, err := strconv.ParseFloat(os.Getenv("OTEL_TRACES_SAMPLER_ARG"), 64); err == nil {
 		ratio = r
 	}
