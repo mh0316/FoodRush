@@ -120,32 +120,6 @@ Flujo técnico:
 - Payments Service ejecuta su lógica de cobro y responde
 - Respuesta JSON al cliente
 
-## Implementación de SAGA y Patrón Outbox
-
-### Descripción del Flujo SAGA (Coreografía)
-Se ha implementado una Saga coreografiada para el flujo crítico de Creación y Pago de Pedido. El sistema utiliza Kafka como backbone de eventos para coordinar los servicios de forma asíncrona y desacoplada.
-
-1.  **Creación (Order Service):** El servicio recibe una solicitud gRPC, valida el catálogo, y persiste la orden en estado `CREATED`. En la misma operación atómica (dentro del documento MongoDB), guarda un evento `foodrush.orders.created` en una lista "outbox".
-2.  **Relay & Publicación:** Un proceso Relay independiente en `order-service` escanea periódicamente la base de datos, publica los eventos pendientes en Kafka (incluyendo el `correlation_id` en los Headers) y los marca como procesados.
-3.  **Procesamiento de Pago (Payment Service):** El consumidor de Kafka en `payment-service` detecta el evento. Procesa el pago y, en una transacción atómica de PostgreSQL, persiste el registro del pago y guarda un evento `foodrush.payments.processed` en su propia tabla `outbox`.
-4.  **Relay de Pago:** El Relay de `payment-service` publica el resultado en Kafka.
-5.  **Finalización (Order Service):** El consumidor de `order-service` recibe el resultado del pago. Si es `APPROVED`, actualiza la orden a `PAID`. Si es `DECLINED` (transacción compensatoria), actualiza la orden a `PAYMENT_DECLINED`.
-
-### Decisión Técnica Clave: Patrón Outbox con Relay Dedicado
-*   **Decisión:** Se implementó el Patrón Outbox en lugar de publicar directamente a Kafka desde la lógica del servicio. En MongoDB (`order-service`) se integró la Outbox dentro del documento de la orden, mientras que en PostgreSQL (`payment-service`) se usó una tabla adicional dentro de la misma transacción.
-*   **Alternativa descartada:** Publicación directa ("Dual Write").
-*   **Razonamiento:** La publicación directa no garantiza atomicidad; el servicio podría persistir en la DB y fallar antes de publicar en Kafka, dejando el sistema en un estado inconsistente permanentemente. El Patrón Outbox garantiza entrega "at least once" al persistir el evento junto con el cambio de estado de negocio.
-
-### Resiliencia y Comportamiento ante Fallos
-*   **Kafka Down:** Si el broker de Kafka es inalcanzable, los procesos Relay reintentarán la publicación indefinidamente sin afectar la disponibilidad de la base de datos o la respuesta inmediata al usuario.
-*   **Servicio Caído:** Si un servicio consumidor está caído, Kafka retiene los mensajes hasta que el servicio se recupere, asegurando que el flujo SAGA eventualmente continúe.
-*   **Error de Negocio (Pago Rechazado):** Se maneja como una transacción compensatoria, moviendo la orden al estado `PAYMENT_DECLINED`, liberando el flujo de forma consistente.
-
-### Limitaciones y Trade-offs
-*   **Limitación:** Latencia de "Casi-Real-Time".
-*   **Trade-off:** La introducción del Relay añade un pequeño retraso (polling interval) entre la persistencia y la visibilidad del evento en Kafka. Se aceptó este compromiso a cambio de la garantía de consistencia eventual y la eliminación del riesgo de pérdida de eventos.
-*   **Headers de Kafka:** El `correlation_id` viaja exclusivamente en los Kafka Headers, lo que optimiza el ruteo y observabilidad en infraestructura, pero requiere que todos los clientes Kafka sean compatibles con esta funcionalidad.
-
 ## Decisiones Tecnicas Y Trade-offs
 
 ### Base De Datos Por Servicio
